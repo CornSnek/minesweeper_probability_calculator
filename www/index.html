@@ -1,0 +1,116 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Minesweeper Calculator</title>
+  <link rel="icon" href="images/favicon.png" type="image/png">
+  <link rel="stylesheet" type="text/css" href="index.css">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.22/dist/katex.min.css"
+    integrity="sha384-5TcZemv2l/9On385z///+d7MSYlvIEw9FuZTIdZ14vJLqWphw7e7ZPuOiCHJcFCP" crossorigin="anonymous">
+  <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.22/dist/katex.min.js"
+    integrity="sha384-cMkvdD8LoxVzGF/RPUKAcvmm49FQ0oxwDF3BGKtDXcEc+T1b2N+teh/OJfpU0jr6"
+    crossorigin="anonymous"></script>
+  <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.22/dist/contrib/auto-render.min.js"
+    integrity="sha384-hCXGrW6PitJEwbkoStFjeJxv+fSOOQKOPbJxSfM6G5sWZjAyWhXiTIIAmQqnlLlh" crossorigin="anonymous"
+    onload="renderMathInElement(document.body);"></script>
+  <script type="module" src="index.js"></script>
+</head>
+
+<body>
+  <div id="grid-body" class="no-highlight"></div>
+  <div id="all-right-tabs" class="right-tabs-normal">
+    <div class="tabs-button" data-tab="about-tab">
+      About
+    </div>
+    <div class="tabs-button">
+      GitHub Source
+    </div>
+    <div class="tabs-button" data-tab="options-tab">
+      Options
+    </div>
+    <div id="calculate-probability" class="tabs-button">
+      Calculate Probability
+    </div>
+    <div id="results-tab-button" class="tabs-button" data-tab="results-tab">
+      Probability Results
+    </div>
+    <div id="clear-probability-button" class="tabs-button">
+      Clear Results
+    </div>
+    <div id="clear-all-button" class="tabs-button">
+      Clear All
+    </div>
+  </div>
+  <div id="all-options-gui">
+    <div id="about-tab" class="options-gui panel-hide-right">
+      <div>
+        <a href="#" class="close-options-panel"><strong class="badge">Close</strong></a>
+      </div>
+      <br>
+      <div>
+        This web app calculates the probabilities of adjacent tiles for mines.<br><br>Fractions equaling 0 (green) is
+        guaranteed to be a safe number tile, and 1 (red) is guaranteed to be a mine.<br><br>
+        Only tiles that are near number tiles (sides and diagonally) will have their probability calculated.<br><br>The
+        web app calculates the probability by first gathering all the tiles
+        that are near number tiles, assign id numbers for each unique tile, and creates a system of equations of each
+        number tile using the ids.<br><br>
+        Each id is assigned 1 it is near the number tile, or 0 if not near it.<br><br>The web app will attempt to solve
+        the equations in order
+        to find all possible solutions.<br><br>For each valid solution, each id number is assigned 0 (no mine) or 1
+        (mine).<br><br>
+        The probability fraction is calculated by summing Each 0 or 1 from each solution, divided by the number of total
+        valid solutions.<br><br>
+        See the Probability Results tab to see an example of the matrix calculations in action.<br><br>
+        Please note that this calculator does not include the global count of mines (yet). The probability only considers
+        the adjacent tiles only.
+      </div>
+    </div>
+    <div id="options-tab" class="options-gui panel-hide-right">
+      <div>
+        <a href="#" class="close-options-panel"><strong class="badge">Close</strong></a>
+      </div>
+      <br>
+      <div>
+        <label for="rows-num">Rows</label>
+        <input id="rows-num" value="10">
+        <br>
+        <label for="columns-num">Columns</label>
+        <input id="columns-num" value="10">
+        <br>
+        <button type="button" id="generate-grid">Generate</button>
+        <br>
+        <label for="show-results-check>">Show Probability Results</label>
+        <input type="checkbox" id="show-results-check">
+      </div>
+    </div>
+    <div id="results-tab" class="options-gui panel-hide-right">
+      <div>
+        <a href="#" class="close-options-panel"><strong class="badge">Close</strong></a>
+      </div>
+      <br>
+      <div id="probability-results-text">
+        Results are shown after clicking 'Probability Results'
+      </div>
+    </div>
+  </div>
+  <div id="tile-gui" class="panel-hide-down">
+    <div>
+      Use <strong class="badge">Escape</strong> to deselect a tile.
+      Hold down <strong class="badge">Shift</strong> and click to multi-select more than one tile.
+      Use the arrow keys <strong class="badge">&uarr;</strong><strong class="badge">&darr;</strong><strong
+        class="badge">&larr;</strong><strong class="badge">&rarr;</strong>
+      or <strong class="badge">W</strong><strong class="badge">A</strong><strong class="badge">S</strong><strong
+        class="badge">D</strong> to move the select region by 1 tile.
+      You can hover over each tile below for its description. You can also use keys on each tile below to add to the
+      board. <strong class="badge">Ctrl</strong>+<strong class="badge">C</strong>,
+      <strong class="badge">Ctrl</strong>+<strong class="badge">X</strong>, and
+      <strong class="badge">Ctrl</strong>+<strong class="badge">V</strong> can be used to copy, cut, and paste tile data respectively.
+    </div>
+    <div id="tiles-palette-container">
+      <div id="tiles-palette"></div>
+      <div id="tile-description"></div>
+    </div>
+  </div>
+</body>
