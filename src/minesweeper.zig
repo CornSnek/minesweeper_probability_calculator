@@ -180,7 +180,7 @@ pub const MapParser = struct {
                 const xltw = x < self.width - 1;
                 const ygt0 = y > 0;
                 const ylth = y < self.height - 1;
-                var adj_mines = num_mines;
+                var adj_mines: i31 = num_mines;
                 var lc: LinearCombination = .empty_alloc;
                 errdefer lc.deinit(allocator);
                 const max_len = self.map.items.len;
@@ -194,59 +194,43 @@ pub const MapParser = struct {
                 const has_nw = xgt0 and ygt0;
                 if (has_n) {
                     const tile = self.map.items[i - self.width];
-                    if (tile == .flag or tile == .mine) {
-                        adj_mines, const sub_overflow = @subWithOverflow(adj_mines, 1);
-                        if (sub_overflow == 1) return error.OverFlag;
-                    }
+                    if (tile == .flag or tile == .mine)
+                        adj_mines -= 1;
                 }
                 if (has_ne) {
                     const tile = self.map.items[i + 1 - self.width];
-                    if (tile == .flag or tile == .mine) {
-                        adj_mines, const sub_overflow = @subWithOverflow(adj_mines, 1);
-                        if (sub_overflow == 1) return error.OverFlag;
-                    }
+                    if (tile == .flag or tile == .mine)
+                        adj_mines -= 1;
                 }
                 if (has_e) {
                     const tile = self.map.items[i + 1];
-                    if (tile == .flag or tile == .mine) {
-                        adj_mines, const sub_overflow = @subWithOverflow(adj_mines, 1);
-                        if (sub_overflow == 1) return error.OverFlag;
-                    }
+                    if (tile == .flag or tile == .mine)
+                        adj_mines -= 1;
                 }
                 if (has_se) {
                     const tile = self.map.items[i + 1 + self.width];
-                    if (tile == .flag or tile == .mine) {
-                        adj_mines, const sub_overflow = @subWithOverflow(adj_mines, 1);
-                        if (sub_overflow == 1) return error.OverFlag;
-                    }
+                    if (tile == .flag or tile == .mine)
+                        adj_mines -= 1;
                 }
                 if (has_s) {
                     const tile = self.map.items[i + self.width];
-                    if (tile == .flag or tile == .mine) {
-                        adj_mines, const sub_overflow = @subWithOverflow(adj_mines, 1);
-                        if (sub_overflow == 1) return error.OverFlag;
-                    }
+                    if (tile == .flag or tile == .mine)
+                        adj_mines -= 1;
                 }
                 if (has_sw) {
                     const tile = self.map.items[i - 1 + self.width];
-                    if (tile == .flag or tile == .mine) {
-                        adj_mines, const sub_overflow = @subWithOverflow(adj_mines, 1);
-                        if (sub_overflow == 1) return error.OverFlag;
-                    }
+                    if (tile == .flag or tile == .mine)
+                        adj_mines -= 1;
                 }
                 if (has_w) {
                     const tile = self.map.items[i - 1];
-                    if (tile == .flag or tile == .mine) {
-                        adj_mines, const sub_overflow = @subWithOverflow(adj_mines, 1);
-                        if (sub_overflow == 1) return error.OverFlag;
-                    }
+                    if (tile == .flag or tile == .mine)
+                        adj_mines -= 1;
                 }
                 if (has_nw) {
                     const tile = self.map.items[i - 1 - self.width];
-                    if (tile == .flag or tile == .mine) {
-                        adj_mines, const sub_overflow = @subWithOverflow(adj_mines, 1);
-                        if (sub_overflow == 1) return error.OverFlag;
-                    }
+                    if (tile == .flag or tile == .mine)
+                        adj_mines -= 1;
                 }
                 if (has_n and self.map.items[i - self.width] == .unknown) {
                     const id = try mm.tm.insert(allocator, .{ .x = x, .y = y - 1 });
@@ -524,6 +508,16 @@ pub const MinesweeperMatrix = struct {
     /// Returns a list of numbers that determine the probability
     /// of each TileMap id if a TileMap self.tm exists.
     pub fn solve(self: *MinesweeperMatrix, allocator: std.mem.Allocator) !?ProbabilityList {
+        for (self.lcs.items) |lc| {
+            var next: ?*const Term = lc.head;
+            while (next) |n| {
+                if (n.id == null) {
+                    if (n.v >= 0) break;
+                    return error.OverFlag;
+                }
+                next = n.next;
+            }
+        }
         var least_id_now: u32 = 0;
         var pivot_row: usize = 0;
         while (true) : (pivot_row += 1) {

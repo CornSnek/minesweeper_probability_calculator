@@ -131,7 +131,6 @@ export fn CalculateProbability() [*c]shared.CalculateArray {
     if (map_parser) |mp| error_happened: {
         mm_whole = mp.to_minesweeper_matrix(wasm_allocator) catch |e| {
             calculate_array = switch (e) {
-                error.OverFlag => .init_error(.overflag),
                 error.OutOfMemory => .init_error(.alloc_error),
                 else => |e2| v: {
                     std.log.err("{!}\n", .{e2});
@@ -207,10 +206,13 @@ export fn CalculateProbability() [*c]shared.CalculateArray {
             const this_mm = &mm_subsystems[i];
             const pl_o = this_mm.solve(wasm_allocator) catch |e| {
                 pl_list[i] = switch (e) {
+                    error.OverFlag => .init_error(.overflag),
                     error.NoSolutionsFound => .init_error(.no_solutions_subsystem),
                     error.OutOfMemory => .init_error(.alloc_error),
                 };
                 pl_list[i].tm = this_mm.tm.get_id_to_location_extern();
+                const sm = "No valid solutions were found for this subsystem.<br><br>";
+                AppendResults(sm, sm.len);
                 continue;
             };
             var this_mm_str: std.ArrayListUnmanaged(u8) = stringify_matrix(wasm_allocator, this_mm, false) catch .empty;
@@ -226,12 +228,12 @@ export fn CalculateProbability() [*c]shared.CalculateArray {
                 } else {
                     pl_list[i] = .init_error(.no_solutions_subsystem);
                     pl_list[i].tm = this_mm.tm.get_id_to_location_extern();
-                    this_mm_str.writer(wasm_allocator).writeAll("No valid solutions found for this subsystem.<br><br>") catch {};
+                    this_mm_str.writer(wasm_allocator).writeAll("No valid solutions were found for this subsystem.<br><br>") catch {};
                 }
             } else {
                 pl_list[i] = .init_error(.no_solutions_subsystem);
                 pl_list[i].tm = this_mm.tm.get_id_to_location_extern();
-                this_mm_str.writer(wasm_allocator).writeAll("No valid solutions found for this subsystem.<br><br>") catch {};
+                this_mm_str.writer(wasm_allocator).writeAll("No valid solutions were found for this subsystem.<br><br>") catch {};
             }
             AppendResults(this_mm_str.items.ptr, this_mm_str.items.len);
         }
