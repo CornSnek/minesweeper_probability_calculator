@@ -25,4 +25,5 @@ pub fn main() !void {
 
 test {
     _ = @import("minesweeper.zig");
+    _ = @import("big_number.zig");
 }

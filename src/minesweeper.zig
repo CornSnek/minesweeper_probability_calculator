@@ -1,5 +1,6 @@
 const std = @import("std");
 const sorted_list = @import("sorted_list.zig");
+const big_number = @import("big_number.zig");
 pub const TileLocation = extern struct {
     x: usize,
     y: usize,
@@ -319,21 +320,6 @@ pub const MinesweeperMatrix = struct {
         if (!lc.valid_order()) return error.MustBeValidLC;
         try self.lcs.append(allocator, lc);
     }
-    pub const Variable = struct {
-        pub const Type = enum { unknown, pivot, free };
-        pub const Value = enum { clear, mine, unknown };
-        pub const empty: Variable = .{ .t = .unknown, .v = .unknown };
-        t: Type,
-        v: Value,
-        pub fn value(self: Variable) ?i31 {
-            return switch (self.v) {
-                .clear => 0,
-                .mine => 1,
-                .unknown => null,
-            };
-        }
-    };
-    pub const VariableList = std.ArrayListUnmanaged(Variable);
     pub const ValuesList = std.ArrayListUnmanaged(i32);
     pub const LocationCount = extern struct {
         x: usize,
@@ -367,31 +353,6 @@ pub const MinesweeperMatrix = struct {
                 allocator.free(self.ptr[0..self.len]);
         }
     };
-    fn only_values(vl: VariableList, allocator: std.mem.Allocator) !ValuesList {
-        var valuel: ValuesList = .empty;
-        errdefer valuel.deinit(allocator);
-        for (vl.items) |v| {
-            try valuel.append(allocator, v.value().?);
-        }
-        return valuel;
-    }
-    fn advance(vl: *VariableList, total_free_count: usize) bool {
-        var free_count: usize = 0;
-        for (0..vl.items.len) |i| {
-            const rev_i = vl.items.len - 1 - i;
-            const v = &vl.items[rev_i];
-            if (v.t == .free) {
-                free_count += 1;
-                if (v.v == .clear) {
-                    v.v = .mine;
-                    return true;
-                } else if (v.v == .mine) {
-                    v.v = .clear;
-                }
-            }
-        }
-        return free_count != total_free_count;
-    }
     pub fn separate_subsystems(self: MinesweeperMatrix, allocator: std.mem.Allocator) ![]MinesweeperMatrix {
         var graph: std.AutoHashMapUnmanaged(u31, sorted_list.SortedIntList(u31, .lt)) = .empty;
         defer {
@@ -505,9 +466,7 @@ pub const MinesweeperMatrix = struct {
         }
         return mm_subsystems;
     }
-    /// Returns a list of numbers that determine the probability
-    /// of each TileMap id if a TileMap self.tm exists.
-    pub fn solve(self: *MinesweeperMatrix, allocator: std.mem.Allocator) !?ProbabilityList {
+    fn solve_rref(self: *MinesweeperMatrix, allocator: std.mem.Allocator) !void {
         for (self.lcs.items) |lc| {
             var next: ?*const Term = lc.head;
             while (next) |n| {
@@ -582,57 +541,61 @@ pub const MinesweeperMatrix = struct {
                 }
             }
         }
+    }
+    pub fn solve_local_only(self: *MinesweeperMatrix, allocator: std.mem.Allocator) !ProbabilityList {
+        try self.solve_rref(allocator);
         if (self.tm.idtol.items.len != 0) {
-            //Algorithm to assign each id as a free or pivot variable (.head with .id != null is a pivot variable).
-            var var_list: VariableList = .empty;
-            defer var_list.deinit(allocator);
-            for (0..self.tm.idtol.items.len) |_| {
-                try var_list.append(allocator, .empty);
-            }
-            var total_free_count: usize = 0;
+            var free_map: std.ArrayListUnmanaged(u32) = .empty;
+            defer free_map.deinit(allocator);
+            try free_map.ensureTotalCapacityPrecise(allocator, self.tm.idtol.items.len);
+            for (0..self.tm.idtol.items.len) |i| free_map.appendAssumeCapacity(@truncate(i));
+            var total_free_count: usize = self.tm.idtol.items.len;
             for (0..self.lcs.items.len) |i| {
-                const lc = self.lcs.items[i];
+                const rev_i = self.lcs.items.len - 1 - i;
+                const lc = self.lcs.items[rev_i];
                 if (lc.head) |lch| {
-                    if (lch.id) |lchid| {
-                        var_list.items[lchid].t = .pivot;
+                    if (lch.id) |lchid| { //Remove highest pivot ids first to swap remove.
+                        _ = free_map.swapRemove(lchid);
+                        total_free_count -= 1;
                     } else {
-                        if (lch.v != 0) {
-                            //Invalid matrix if any row has all id values (LHS) of zero and RHS (null id) is non-zero.
+                        if (lch.v != 0) //Invalid matrix if any row has all id values (LHS) of zero and RHS (null id) is non-zero.
                             return error.NoSolutionsFound;
-                        }
                     }
                 }
             }
-            for (var_list.items) |*v| {
-                if (v.t == .unknown) {
-                    v.* = .{ .t = .free, .v = .clear };
-                    total_free_count += 1;
-                }
-            }
+            var bui_free_max: big_number.BigUInt = try .init(allocator, 0);
+            defer bui_free_max.deinit(allocator);
+            var bui_free_counter: big_number.BigUInt = try .init(allocator, 0);
+            defer bui_free_counter.deinit(allocator);
+            try bui_free_max.pad(allocator, total_free_count / 8 + 1);
+            try bui_free_counter.pad(allocator, total_free_count / 8 + 1);
+            bui_free_max.set(total_free_count);
             var total: usize = 0;
             var mines_value_list: ValuesList = .empty;
             defer mines_value_list.deinit(allocator);
             try mines_value_list.appendNTimes(allocator, 0, self.tm.idtol.items.len);
-            while (true) {
-                var solution = try self.verify_solution(allocator, var_list);
-                if (solution) |*s| {
-                    defer s.deinit(allocator);
-                    //std.log.debug("Found solution: {any}\n", .{s.items});
-                    for (0..s.items.len) |i| {
-                        mines_value_list.items[i] += s.items[i];
+            while (bui_free_counter.order(bui_free_max) != .eq) : (try bui_free_counter.add_one(allocator)) {
+                var bui_variables: big_number.BigUInt = try .init(allocator, 0);
+                defer bui_variables.deinit(allocator);
+                try bui_variables.pad(allocator, self.tm.idtol.items.len / 8 + 1);
+                for (free_map.items, 0..) |offset, i| //Set bit of free variables to 1 (mine) if bui_free_counter is 1.
+                    if (bui_free_counter.bit(i))
+                        bui_variables.set(offset);
+                if (try self.verify_solution(allocator, &bui_variables)) {
+                    for (0..self.tm.idtol.items.len) |i| {
+                        mines_value_list.items[i] += @intFromBool(bui_variables.bit(i));
                     }
+                    std.log.debug("{} {}\n", .{ bui_variables, bui_variables.pop_count() });
                     total += 1;
                 }
-                if (!advance(&var_list, total_free_count)) break;
             }
             return try ProbabilityList.init(allocator, total, self.tm, &mines_value_list);
-        } else {
-            return null;
         }
+        var mines_value_list: ValuesList = .empty;
+        defer mines_value_list.deinit(allocator);
+        return try ProbabilityList.init(allocator, 0, self.tm, &mines_value_list);
     }
-    pub fn verify_solution(self: MinesweeperMatrix, allocator: std.mem.Allocator, var_list: VariableList) !?ValuesList {
-        var var_list_cpy = try var_list.clone(allocator);
-        errdefer var_list_cpy.deinit(allocator);
+    fn verify_solution(self: MinesweeperMatrix, allocator: std.mem.Allocator, bui_variables: *big_number.BigUInt) !bool {
         for (0..self.lcs.items.len) |i| {
             const rev_i = self.lcs.items.len - 1 - i;
             var lc = try self.lcs.items[rev_i].clone(allocator);
@@ -643,12 +606,9 @@ pub const MinesweeperMatrix = struct {
             if (next) |n| {
                 if (n.id == null) {
                     if (n.v != 0) {
-                        var_list_cpy.deinit(allocator);
                         //Invalid solution if all id values (LHS) is zero and RHS (null id) is non-zero.
-                        return null;
-                    } else {
-                        continue;
-                    }
+                        return false;
+                    } else continue;
                 }
                 pivot_term = n;
                 var next2 = next.?.next;
@@ -663,7 +623,7 @@ pub const MinesweeperMatrix = struct {
             }
             while (next) |n| {
                 if (n.id == null) break;
-                const var_v = var_list_cpy.items[n.id.?].value().?;
+                const var_v: i32 = @intFromBool(bui_variables.bit(n.id.?));
                 num_mines_term.v -= n.v * var_v; //Substitute all free variables onto null id.
                 lc.remove(allocator, n.id);
                 next = n.next;
@@ -671,14 +631,11 @@ pub const MinesweeperMatrix = struct {
             const pivot_v = next.?.v;
             if (pivot_v != 0 and pivot_v != 1) {
                 //Invalid solution if pivot variable is not 0 (clear) or 1 (mine).
-                var_list_cpy.deinit(allocator);
-                return null;
-            } else {
-                var_list_cpy.items[pivot_term.id.?].v = if (pivot_v == 0) .clear else .mine;
-            }
+                return false;
+            } else if (pivot_v == 1)
+                bui_variables.set(pivot_term.id.?);
         }
-        defer var_list_cpy.deinit(allocator);
-        return try only_values(var_list_cpy, allocator);
+        return true;
     }
     pub fn format(self: MinesweeperMatrix, comptime f: []const u8, options: std.fmt.FormatOptions, writer: anytype) !void {
         try writer.writeAll("MinesweeperMatrix{[");
@@ -1224,7 +1181,7 @@ test "Tilemap.to_minesweeper_matrix" {
     }
 }
 test "MinesweeperMatrix.separate_subsystems" {
-    var mp_status = MapParser.init_parse("xxx\nx0x\nxxx", t_allocator);
+    var mp_status = MapParser.init_parse("ccccc\nc121c\nccccc", t_allocator);
     if (mp_status == .ok) {
         defer mp_status.ok.deinit(t_allocator);
         var mm = try mp_status.ok.to_minesweeper_matrix(t_allocator);
@@ -1239,10 +1196,8 @@ test "MinesweeperMatrix.separate_subsystems" {
             t_allocator.free(mms);
         }
         for (mms) |*mm_sub| {
-            const solved = try mm_sub.solve(t_allocator);
-            if (solved) |s| {
-                defer s.deinit(t_allocator);
-            }
+            const solved = try mm_sub.solve_local_only(t_allocator);
+            defer solved.deinit(t_allocator);
             std.debug.print("{any}\n", .{solved});
         }
     } else {

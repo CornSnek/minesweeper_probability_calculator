@@ -204,7 +204,7 @@ export fn CalculateProbability() [*c]shared.CalculateArray {
             };
             AppendResults(alloc_sm.items.ptr, alloc_sm.items.len);
             const this_mm = &mm_subsystems[i];
-            const pl_o = this_mm.solve(wasm_allocator) catch |e| {
+            const pl = this_mm.solve_local_only(wasm_allocator) catch |e| {
                 pl_list[i] = switch (e) {
                     error.OverFlag => .init_error(.overflag),
                     error.NoSolutionsFound => .init_error(.no_solutions_subsystem),
@@ -217,19 +217,13 @@ export fn CalculateProbability() [*c]shared.CalculateArray {
             };
             var this_mm_str: std.ArrayListUnmanaged(u8) = stringify_matrix(wasm_allocator, this_mm, false) catch .empty;
             defer this_mm_str.deinit(wasm_allocator);
-            if (pl_o) |pl| {
-                if (pl.total != 0) {
-                    pl_list[i] = .{
-                        .pl = pl,
-                        .status = .ok,
-                        .tm = this_mm.tm.get_id_to_location_extern(),
-                    };
-                    this_mm_str.writer(wasm_allocator).print("Total valid solutions found for this subsystem: {}<br><br>", .{pl.total}) catch {};
-                } else {
-                    pl_list[i] = .init_error(.no_solutions_subsystem);
-                    pl_list[i].tm = this_mm.tm.get_id_to_location_extern();
-                    this_mm_str.writer(wasm_allocator).writeAll("No valid solutions were found for this subsystem.<br><br>") catch {};
-                }
+            if (pl.total != 0) {
+                pl_list[i] = .{
+                    .pl = pl,
+                    .status = .ok,
+                    .tm = this_mm.tm.get_id_to_location_extern(),
+                };
+                this_mm_str.writer(wasm_allocator).print("Total valid solutions found for this subsystem: {}<br><br>", .{pl.total}) catch {};
             } else {
                 pl_list[i] = .init_error(.no_solutions_subsystem);
                 pl_list[i].tm = this_mm.tm.get_id_to_location_extern();

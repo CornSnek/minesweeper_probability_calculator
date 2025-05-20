@@ -12,6 +12,7 @@
     --ms-unknown: #C0C0C0;
     --ms-clicked: #B0B0B0;
     --ms-mine-clicked: #BF0000;
+    --ms-probability-clear: #107F10;
     --ms-probability-mine: #7F3030;
     --ms-probability: #FFFF70;
     --border-color1: white;
@@ -81,6 +82,8 @@ a {
 }
 
 .tile.tile-pb-clear {
+    color: white;
+    background-color: var(--ms-probability-clear);
     background-image: url('images/x_transp.svg');
     background-repeat: no-repeat;
     background-size: var(--size-image);
