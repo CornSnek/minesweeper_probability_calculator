@@ -194,6 +194,7 @@ export fn CalculateProbability() [*c]shared.CalculateArray {
         if (pl_list.len != 0) {
             const sm = "Solving the following system(s) using RREF and brute forcing 0 or 1 for each \\(x_n\\) free variable<br><br>";
             AppendResults(sm, sm.len);
+            SetSubsystemNumber(pl_list.len);
         }
         for (0..mm_subsystems.len) |i| {
             var alloc_sm: std.ArrayListUnmanaged(u8) = .empty;
@@ -204,11 +205,12 @@ export fn CalculateProbability() [*c]shared.CalculateArray {
             };
             AppendResults(alloc_sm.items.ptr, alloc_sm.items.len);
             const this_mm = &mm_subsystems[i];
-            const pl = this_mm.solve_local_only(wasm_allocator) catch |e| {
+            const pl = this_mm.solve_local_only(wasm_allocator, i) catch |e| {
                 pl_list[i] = switch (e) {
                     error.OverFlag => .init_error(.overflag),
                     error.NoSolutionsFound => .init_error(.no_solutions_subsystem),
                     error.OutOfMemory => .init_error(.alloc_error),
+                    error.CalculationCancelled => .init_error(.cancelled),
                 };
                 pl_list[i].tm = this_mm.tm.get_id_to_location_extern();
                 const sm = "No valid solutions were found for this subsystem.<br><br>";
@@ -223,7 +225,7 @@ export fn CalculateProbability() [*c]shared.CalculateArray {
                     .status = .ok,
                     .tm = this_mm.tm.get_id_to_location_extern(),
                 };
-                this_mm_str.writer(wasm_allocator).print("Total valid solutions found for this subsystem: {}<br><br>", .{pl.total}) catch {};
+                this_mm_str.writer(wasm_allocator).print("<br>", .{}) catch {};
             } else {
                 pl_list[i] = .init_error(.no_solutions_subsystem);
                 pl_list[i].tm = this_mm.tm.get_id_to_location_extern();
@@ -232,10 +234,15 @@ export fn CalculateProbability() [*c]shared.CalculateArray {
             AppendResults(this_mm_str.items.ptr, this_mm_str.items.len);
         }
     }
+    @atomicStore(bool, &CancelCalculation, false, .release);
     wasm_print.FlushPrint(false);
     FinalizeResults();
     return &calculate_array;
 }
-extern fn ClearResults() void;
-extern fn AppendResults([*c]const u8, usize) void;
-extern fn FinalizeResults() void;
+pub extern fn ClearResults() void;
+pub extern fn AppendResults([*c]const u8, usize) void;
+pub extern fn FinalizeResults() void;
+pub extern fn SetSubsystemNumber(usize) void;
+pub extern fn SetTimeoutProgress(usize, f32) void;
+pub export var CalculateStatus: bool = false;
+pub export var CancelCalculation: bool = false;

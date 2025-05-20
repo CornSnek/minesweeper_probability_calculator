@@ -16,9 +16,9 @@ In order to build the website and/or the wasm binary: `zig build wasm -Doptimize
 Python 3 is also used to build the server to build and test the website: `zig build server`
 
 ## Projects Used
-**KaTeX** (https://katex.org) was added to this project to show and format the matrices and probability calculations
+- **KaTeX** (https://katex.org) was added to this project to show and format the matrices and probability calculations
+- **coi-serviceworker** (https://github.com/gzuidhof/coi-serviceworker) was added to this project to enable COOP and COEP headers for Github Pages
+
 
 ## TODO
 - Create global mine probability calculations as shown from this page https://www.lrvideckis.com/blog/2020/07/17/minesweeper_probability.html. Right now, this shows only the adjacent tiles probability.
-
-- Move the wasm module to a Web Worker in the javascript script so that it doesn't freeze the browser when it does a long calculation.

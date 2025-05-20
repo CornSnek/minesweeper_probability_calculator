@@ -15,6 +15,7 @@
   <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.22/dist/contrib/auto-render.min.js"
     integrity="sha384-hCXGrW6PitJEwbkoStFjeJxv+fSOOQKOPbJxSfM6G5sWZjAyWhXiTIIAmQqnlLlh" crossorigin="anonymous"
     onload="renderMathInElement(document.body);"></script>
+  <script src="coi-serviceworker.js"></script>
   <script type="module" src="index.js"></script>
 </head>
 
@@ -32,6 +33,10 @@
     </div>
     <div id="calculate-probability" class="tabs-button">
       Calculate Probability
+    </div>
+    <div id="progress-div" style="display: none;">
+      <progress id="subsystem-progress" value="0"></progress>
+      <progress id="calculate-progress" value="0"></progress>
     </div>
     <div id="results-tab-button" class="tabs-button" data-tab="results-tab">
       Probability Results

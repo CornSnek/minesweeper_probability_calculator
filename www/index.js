@@ -1,6 +1,8 @@
 import { PrintType, MsType, CalculateArray, CalculateStatus, Calculate, ProbabilityList, LocationCount, IDToLocationExtern, TileLocation } from './wasm_to_js.js'
 let WasmObj = null;
 let WasmExports = null;
+let calculate_worker = null;
+const WasmMemory = new WebAssembly.Memory({ initial: 20, maximum: 65536, shared: true });
 const TD = new TextDecoder();
 const TE = new TextEncoder();
 let grid_body = null;
@@ -17,11 +19,15 @@ let clear_probability_button;
 let clear_all_button;
 let probability_results_text;
 let show_results_check;
+let progress_div;
+let calculate_progress;
+let subsystem_progress;
 let rows = null;
 let columns = null;
 let keybind_map = new Map();
 let shift_key_down = false;
 let ctrl_key_down = false;
+let is_calculating = false;
 function do_print(str, print_type) {
     if (print_type === PrintType.log) {
         console.log(str);
@@ -32,7 +38,7 @@ function do_print(str, print_type) {
     }
 }
 function JSPrint(buffer_addr, expected_len, marked_full) {
-    const byte_view = new Uint8Array(WasmExports.memory.buffer);
+    const byte_view = new Uint8Array(WasmMemory.buffer);
     const num_messages = byte_view[buffer_addr];
     let byte_now = buffer_addr + 1;
     let last_print_type = null;
@@ -70,6 +76,14 @@ function JSPrint(buffer_addr, expected_len, marked_full) {
     if (marked_full) console.error(`A log message is truncated due to overflowing ${WasmObj.instance.exports.PrintBufferMax()} maximum bytes. Use FlushPrint() to flush the buffer.`);
 }
 async function init() {
+    if ('serviceWorker' in navigator) {
+        try {
+            await navigator.serviceWorker.register('./coi-serviceworker.js', { scope: '/minesweeper_probability_calculator/' });
+            console.log('COI service worker registered and active');
+        } catch (err) {
+            console.error('Failed to register COI service worker:', err);
+        }
+    }
     grid_body = document.getElementById('grid-body');
     tiles_palette = document.getElementById('tiles-palette');
     tile_description = document.getElementById('tile-description');
@@ -83,6 +97,9 @@ async function init() {
     clear_all_button = document.getElementById('clear-all-button');
     probability_results_text = document.getElementById('probability-results-text');
     show_results_check = document.getElementById('show-results-check');
+    calculate_progress = document.getElementById('calculate-progress');
+    subsystem_progress = document.getElementById('subsystem-progress');
+    progress_div = document.getElementById('progress-div');
     size_image = size_image = parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--size-image').trim());
     for (const tile_name of MsType.$$names) {
         const ms_type = MsType[tile_name];
@@ -110,7 +127,7 @@ async function init() {
         }
     }
     const wasm_obj = await WebAssembly.instantiateStreaming(fetch('./minesweeper_calculator.wasm'), {
-        env: { JSPrint, ClearResults, AppendResults, FinalizeResults },
+        env: { memory: WasmMemory, JSPrint, ClearResults, AppendResults, FinalizeResults, SetSubsystemNumber, SetTimeoutProgress },
     });
     WasmObj = wasm_obj;
     WasmExports = wasm_obj.instance.exports;
@@ -154,22 +171,49 @@ async function init() {
     rows_num.onchange = e => rows_num.value = Math.min(Math.max(parseInt(rows_num.value), 1), 100);;
     columns_num.onchange = e => columns_num.value = Math.min(Math.max(parseInt(columns_num.value), 1), 100);;
     generate_grid.onclick = e => {
+        if (is_calculating) return;
         if (confirm('Are you sure? This will clear all tiles.')) {
             init_grid(parseInt(rows_num.value), parseInt(columns_num.value));
         }
     };
-    calculate_probability.onclick = e => parse_probability_list(WasmExports.CalculateProbability());
+    calculate_probability.onclick = e => {
+        if (!is_calculating) {
+            start_progress();
+            deselect_tiles_f();
+            calculate_worker.postMessage(['f', 'CalculateProbability']);
+            SetTimeoutProgress(0, 0.0);
+            calculate_probability.textContent = 'Cancel Calculation';
+        } else
+            Atomics.store(new Uint8Array(WasmMemory.buffer), WasmExports.CancelCalculation.value, 1);
+    };
     clear_probability_button.onclick = clear_all_probability;
     clear_all_button.onclick = e => {
+        if (is_calculating) return;
         if (confirm('Are you sure? This will clear all tiles.'))
             init_grid(parseInt(rows_num.value), parseInt(columns_num.value))
     };
     document.addEventListener('paste', e => selected_tile.paste_text_clipboard(e.clipboardData.getData('text')));
     document.body.style.marginRight = `${all_right_tabs.offsetWidth}px`;
     document.body.style.marginBottom = `${tile_gui.offsetHeight}px`;
+    calculate_worker = new Worker("./calculate.js", { type: 'module' });
+    calculate_worker.onerror = end_progress;
+    calculate_worker.onmessage = e => {
+        worker_handler_module[e.data[0]](...e.data.slice(1));
+    };
+    calculate_worker.postMessage(['m', WasmMemory]);
     console.log('Waiting for KaTeX module...');
     wait_katex();
 }
+const worker_handler_module = {
+    JSPrint,
+    ClearResults,
+    AppendResults,
+    FinalizeResults,
+    SetSubsystemNumber,
+    SetTimeoutProgress,
+    parse_probability_list,
+    do_print,
+};
 function show_tab(tab_elem, tab_id) {
     deselect_tiles_f();
     hide_any_right_panels();
@@ -221,9 +265,12 @@ function init_grid(num_rows, num_columns) {
         div.dataset.x = x;
         div.dataset.y = y;
         div.dataset.ms_type = MsType.unknown;
-        div.onclick = tile_select_f.bind(new SelectedTile({
-            t: SelectedTile.One, p: new TilePoint(div.dataset.x, div.dataset.y)
-        }));
+        div.onclick = e => {
+            if (is_calculating) return;
+            tile_select_f.bind(new SelectedTile({
+                t: SelectedTile.One, p: new TilePoint(div.dataset.x, div.dataset.y)
+            }))(e);
+        };
         div.onmouseenter = () => div.classList.add('tile-hovered');
         div.onmouseleave = () => div.classList.remove('tile-hovered');
     }
@@ -562,28 +609,29 @@ function get_default_tile_description() {
     return '';
 }
 function parse_probability_list(c_arr_ptr) {
+    end_progress();
     deselect_tiles_f();
     clear_all_probability();
     if (show_results_check.checked) {
         const results_tab_button = document.getElementById('results-tab-button');
         show_tab(results_tab_button, 'results-tab');
     }
-    const calc_arr = new DataView(WasmExports.memory.buffer, c_arr_ptr, CalculateArray.$size);
+    const calc_arr = new DataView(WasmMemory.buffer, c_arr_ptr, CalculateArray.$size);
     const calc_arr_status = calc_arr.getUint8(CalculateArray.status.offset, true);
     if (calc_arr_status == CalculateStatus.ok) {
         const ca_ptr = calc_arr.getUint32(CalculateArray.ptr.offset, true);
         const ca_len = calc_arr.getUint32(CalculateArray.len.offset, true);
         if (ca_len == 0) return;
-        const ca = new DataView(WasmExports.memory.buffer, ca_ptr, Calculate.$size * ca_len);
+        const ca = new DataView(WasmMemory.buffer, ca_ptr, Calculate.$size * ca_len);
         for (let ca_i = 0; ca_i < ca_len; ca_i++) {
             const calc_status = ca.getUint8(ca_i * Calculate.$size + Calculate.status.offset, true);
             const calc_ptr = ca_ptr + ca_i * Calculate.$size;
             if (calc_status == CalculateStatus.ok) {
-                const pl = new DataView(WasmExports.memory.buffer, calc_ptr + Calculate.pl.offset, ProbabilityList.$size);
+                const pl = new DataView(WasmMemory.buffer, calc_ptr + Calculate.pl.offset, ProbabilityList.$size);
                 const total_solutions = pl.getUint32(ProbabilityList.total.offset, true);
                 const lc_ptr = pl.getUint32(ProbabilityList.ptr.offset, true);
                 const lc_len = pl.getUint32(ProbabilityList.len.offset, true);
-                const lc = new DataView(WasmExports.memory.buffer, lc_ptr, lc_len * LocationCount.$size);
+                const lc = new DataView(WasmMemory.buffer, lc_ptr, lc_len * LocationCount.$size);
                 for (let lc_i = 0; lc_i < lc_len; lc_i++) {
                     const x = lc.getUint32(lc_i * LocationCount.$size + LocationCount.x.offset, true);
                     const y = lc.getUint32(lc_i * LocationCount.$size + LocationCount.y.offset, true);
@@ -598,10 +646,10 @@ function parse_probability_list(c_arr_ptr) {
                     div.dataset.probability = 'y';
                 }
             } else {
-                const tm = new DataView(WasmExports.memory.buffer, calc_ptr + Calculate.tm.offset, IDToLocationExtern.$size);
+                const tm = new DataView(WasmMemory.buffer, calc_ptr + Calculate.tm.offset, IDToLocationExtern.$size);
                 const tl_ptr = tm.getUint32(IDToLocationExtern.ptr.offset, true);
                 const tl_len = tm.getUint32(IDToLocationExtern.len.offset, true);
-                const tl_arr = new DataView(WasmExports.memory.buffer, tl_ptr, TileLocation.$size * tl_len);
+                const tl_arr = new DataView(WasmMemory.buffer, tl_ptr, TileLocation.$size * tl_len);
                 for (let tl_i = 0; tl_i < tl_len; tl_i++) {
                     const x = tl_arr.getUint32(tl_i * TileLocation.$size + TileLocation.x.offset, true);
                     const y = tl_arr.getUint32(tl_i * TileLocation.$size + TileLocation.y.offset, true);
@@ -618,17 +666,36 @@ function parse_probability_list(c_arr_ptr) {
     }
 }
 function ClearResults() {
-    probability_results_text.textContent = 'Probability Results<br><br>';
+    probability_results_text.innerHTML = 'Probability Results<br><br>';
 }
-function AppendResults(str_ptr, str_len) {
-    if (str_len == 0) {
-        console.warn('str_len is 0 in AppendResults. str_ptr will not be used.')
-        return;
-    }
-    const string = TD.decode(new Uint8Array(WasmExports.memory.buffer, str_ptr, str_len));
-    probability_results_text.textContent += string;
+function AppendResults(string) {
+    probability_results_text.innerHTML += string;
+    renderMathInElement(probability_results_text);
 }
 function FinalizeResults() {
-    probability_results_text.innerHTML = probability_results_text.textContent;
     renderMathInElement(probability_results_text);
+}
+let debounce_timeout = false;
+function start_progress() {
+    is_calculating = true;
+    progress_div.style.display = 'initial';
+}
+function SetSubsystemNumber(subsystems) {
+    subsystem_progress.max = subsystems;
+}
+function SetTimeoutProgress(subsystem_id, progress) {
+    if (debounce_timeout) return;
+    debounce_timeout = true;
+    setTimeout(() => {
+        Atomics.store(new Uint8Array(WasmMemory.buffer), WasmExports.CalculateStatus.value, 1);
+        debounce_timeout = false;
+    }, 1000);
+    subsystem_progress.value = subsystem_id + 1;
+    calculate_progress.value = progress;
+}
+function end_progress() {
+    is_calculating = false;
+    calculate_progress.value = 1;
+    progress_div.style.display = 'none';
+    calculate_probability.textContent = 'Calculate Probability';
 }

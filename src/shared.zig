@@ -6,6 +6,7 @@ pub const CalculateStatus = enum(u8) {
     overflag,
     no_solutions,
     no_solutions_subsystem,
+    cancelled,
     unknown,
     pub fn error_message(self: CalculateStatus) []const u8 {
         return switch (self) {
@@ -14,6 +15,7 @@ pub const CalculateStatus = enum(u8) {
             .overflag => "No solutions were found because a number tile was detected for having too many flags or mines.",
             .no_solutions => "No solutions were found. The configuration of the number tiles is incorrect or impossible.",
             .no_solutions_subsystem => "No solutions were found for this subsystem. The configuration of the number tiles is incorrect or impossible.",
+            .cancelled => "Calculation was cancelled.",
             .unknown => "An unexpected error has happened. This error should not exist because the developer have overlooked this error.",
         };
     }

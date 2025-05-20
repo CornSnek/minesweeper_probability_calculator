@@ -181,11 +181,17 @@ pub fn build(b: *std.Build) !void {
         .target = b.resolveTargetQuery(.{
             .cpu_arch = .wasm32,
             .os_tag = .freestanding,
+            .cpu_features_add = std.Target.wasm.featureSet(&.{ .atomics, .bulk_memory }),
         }),
         .optimize = optimize,
     });
+    wasm_exe.import_memory = true;
+    wasm_exe.initial_memory = 65536 * 20;
+    wasm_exe.max_memory = 65536 * 65536;
+    wasm_exe.shared_memory = true;
     wasm_exe.entry = .disabled;
     wasm_exe.rdynamic = true;
+
     wasm_exe.root_module.export_symbol_names = &.{
         "WasmListAllocs",
         "WasmAlloc",
@@ -193,6 +199,8 @@ pub fn build(b: *std.Build) !void {
         "WasmFreeAll",
         "FlushPrint",
         "PrintBufferMax",
+        "CalculateStatus",
+        "CancelCalculation",
         "CreateGrid",
         "QueryTile",
         "SetTile",
