@@ -24,13 +24,19 @@
     /*Edited by js when opening a right tab*/
 }
 
+#patterns-list {
+    display: flex;
+    flex-direction: column;
+    gap: 60px;
+}
+
 a {
     color: inherit;
     padding: inherit;
     text-decoration: none;
 }
 
-#grid-body {
+.tile-template, #grid-body {
     display: grid;
     --column-gap-calc: calc(var(--border-size) + 2px);
     column-gap: var(--column-gap-calc);
@@ -70,6 +76,15 @@ a {
     border-left: var(--border-size) solid var(--ms-mine-clicked);
     border-bottom: var(--border-size) solid var(--ms-mine-clicked);
     border-right: var(--border-size) solid var(--ms-mine-clicked);
+}
+
+.tile.tile-pb-q {
+    color: black;
+    background-color: var(--ms-probability);
+    background-image: url('images/pb_unknown.svg');
+    background-repeat: no-repeat;
+    background-size: var(--size-image);
+    background-position: center;
 }
 
 .tile.tile-pb-mine {

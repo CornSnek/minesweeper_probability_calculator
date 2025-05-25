@@ -22,6 +22,7 @@ let show_results_check;
 let progress_div;
 let calculate_progress;
 let subsystem_progress;
+let patterns_body;
 let rows = null;
 let columns = null;
 let keybind_map = new Map();
@@ -100,6 +101,7 @@ async function init() {
     calculate_progress = document.getElementById('calculate-progress');
     subsystem_progress = document.getElementById('subsystem-progress');
     progress_div = document.getElementById('progress-div');
+    patterns_body = document.getElementById('patterns-body');
     size_image = size_image = parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--size-image').trim());
     for (const tile_name of MsType.$$names) {
         const ms_type = MsType[tile_name];
@@ -201,6 +203,13 @@ async function init() {
         worker_handler_module[e.data[0]](...e.data.slice(1));
     };
     calculate_worker.postMessage(['m', WasmMemory]);
+    document.querySelectorAll('#patterns-body .tile-template').forEach(div => {
+        create_board_pattern(div, div.dataset.nrows, div.dataset.str);
+        div.onclick=e=>{
+            const copy_data=SelectedTile.ClipboardHeader+div.dataset.str.replace(/[cv][.?]/g,'c');
+            navigator.clipboard.writeText(copy_data).catch(err => console.warn('Clipboard copy failed: ' + err));
+        };
+    });
     console.log('Waiting for KaTeX module...');
     wait_katex();
 }
@@ -558,6 +567,14 @@ function deselect_tiles_f(e) {
 }
 function update_tile_div(div) {
     const ms_type = div.dataset.ms_type;
+    if (MsType.$is_clicked[ms_type]) {
+        div.classList.add('tile-clicked');
+        if (ms_type == MsType.mine)
+            div.classList.add('tile-mine');
+    } else {
+        div.classList.remove('tile-clicked');
+        div.classList.remove('tile-mine');
+    }
     console.assert(div.dataset.ms_type < MsType.$$length, 'ms_type enum is out of range');
     const image_url = MsType.$image_url[ms_type];
     div.textContent = '';
@@ -578,14 +595,6 @@ function update_tile(x, y) {
     clear_probability(div);
     const ms_type = WasmExports.QueryTile(x, y);
     div.dataset.ms_type = ms_type;
-    if (MsType.$is_clicked[ms_type]) {
-        div.classList.add('tile-clicked');
-        if (ms_type == MsType.mine)
-            div.classList.add('tile-mine');
-    } else {
-        div.classList.remove('tile-clicked');
-        div.classList.remove('tile-mine');
-    }
     update_tile_div(div);
 }
 function clear_all_probability() {
@@ -670,7 +679,6 @@ function ClearResults() {
 }
 function AppendResults(string) {
     probability_results_text.innerHTML += string;
-    renderMathInElement(probability_results_text);
 }
 function FinalizeResults() {
     renderMathInElement(probability_results_text);
@@ -689,6 +697,7 @@ function SetTimeoutProgress(subsystem_id, progress) {
     setTimeout(() => {
         Atomics.store(new Uint8Array(WasmMemory.buffer), WasmExports.CalculateStatus.value, 1);
         debounce_timeout = false;
+        renderMathInElement(probability_results_text);
     }, 1000);
     subsystem_progress.value = subsystem_id + 1;
     calculate_progress.value = progress;
@@ -698,4 +707,42 @@ function end_progress() {
     calculate_progress.value = 1;
     progress_div.style.display = 'none';
     calculate_probability.textContent = 'Calculate Probability';
+}
+function create_board_pattern(div_parent, num_rows, tile_string) {
+    div_parent.classList.add('tile-template');
+    div_parent.style.setProperty('--num-rows', num_rows);
+    for (let ch_i = 0; ch_i < tile_string.length; ch_i++) {
+        const this_ch = tile_string[ch_i];
+        const next_ch = (ch_i != tile_string.length) ? tile_string[ch_i + 1] : null;
+        let tile_enum;
+        if ((tile_enum = ch_to_tile_enum.get(this_ch)) !== undefined) {
+            const tile_div = document.createElement('div');
+            div_parent.appendChild(tile_div);
+            tile_div.classList.add('tile');
+            tile_div.dataset.ms_type = tile_enum;
+            update_tile_div(tile_div);
+            if (next_ch == '.') {
+                if (tile_enum == MsType.unknown) {
+                    tile_div.classList.add('tile-pb-clear');
+                    tile_div.textContent = '';
+                } else if (tile_enum == MsType.mine) {
+                    tile_div.classList.add('tile-pb-mine');
+                    tile_div.textContent = '';
+                } else {
+                    console.error(`Character '${this_ch}' is only used for unknowns or mines for string '${tile_string}' at index #${ch_i}`);
+                }
+                ch_i++;
+            } else if (next_ch == '?') {
+                if (tile_enum == MsType.unknown) {
+                    tile_div.classList.add('tile-pb-q');
+                    tile_div.textContent = '';
+                } else {
+                    console.error(`Character '${this_ch}' is only used for unknowns for string '${tile_string}' at index #${ch_i}`);
+                }
+                ch_i++;
+            }
+        } else if (this_ch != ',') {
+            console.error(`Character '${this_ch}' is not part of the tile set for string '${tile_string}' at index #${ch_i}`);
+        }
+    }
 }
