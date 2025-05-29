@@ -2,7 +2,7 @@
     background-color: var(--bg-1);
     color: white;
     font-family: 'Consolas', 'Monaco', 'Courier New', monospace;
-    --num-rows: 10;
+    --num-columns: 10;
     /*Edited by js when creating a grid*/
     --bg-1: #2f2f2f;
     --bg-2: gray;
@@ -42,8 +42,8 @@ a {
     --column-gap-calc: calc(var(--border-size) + 2px);
     column-gap: var(--column-gap-calc);
     row-gap: var(--border-size);
-    grid-template-columns: repeat(var(--num-rows), var(--size-tile));
-    width: min(calc(var(--num-rows) * (var(--size-tile) + var(--column-gap-calc))), 100%);
+    grid-template-columns: repeat(var(--num-columns), var(--size-tile));
+    width: min(calc(var(--num-columns) * (var(--size-tile) + var(--column-gap-calc))), 100%);
     overflow: auto;
 }
 

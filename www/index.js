@@ -188,7 +188,7 @@ async function init() {
     generate_grid.onclick = e => {
         if (is_calculating) return;
         if (confirm('Are you sure? This will clear all tiles.')) {
-            init_grid(parseInt(rows_num.value), parseInt(columns_num.value));
+            init_grid(parseInt(columns_num.value),parseInt(rows_num.value));
         }
     };
     calculate_probability.onclick = e => {
@@ -208,7 +208,7 @@ async function init() {
     clear_all_button.onclick = e => {
         if (is_calculating) return;
         if (confirm('Are you sure? This will clear all tiles.'))
-            init_grid(parseInt(rows_num.value), parseInt(columns_num.value))
+            init_grid(parseInt(columns_num.value), parseInt(rows_num.value))
     };
     document.addEventListener('paste', e => selected_tile.paste_text_clipboard(e.clipboardData.getData('text')));
     document.body.style.marginRight = `${all_right_tabs.offsetWidth}px`;
@@ -220,7 +220,7 @@ async function init() {
     };
     calculate_worker.postMessage(['m', WasmMemory]);
     document.querySelectorAll('#patterns-body .tile-template').forEach(div => {
-        create_board_pattern(div, div.dataset.nrows, div.dataset.str);
+        create_board_pattern(div, div.dataset.ncolumns, div.dataset.str);
         div.onclick = e => {
             const copy_data = SelectedTile.ClipboardHeader + div.dataset.str.replace(/[cv][.?]/g, 'c');
             navigator.clipboard.writeText(copy_data).catch(err => console.warn('Clipboard copy failed: ' + err));
@@ -294,16 +294,16 @@ function hide_any_right_panels(e) {
     }
 }
 document.addEventListener('DOMContentLoaded', init);
-function init_grid(num_rows, num_columns) {
+function init_grid(num_columns, num_rows) {
     console.assert(num_columns > 0 && num_rows > 0, 'num_columns and num_rows should be greater than 0');
     rows = num_rows;
     columns = num_columns;
-    WasmExports.CreateGrid(num_rows, num_columns);
-    document.querySelector(':root').style.setProperty('--num-rows', num_rows);
+    WasmExports.CreateGrid(num_columns, num_rows);
+    document.querySelector(':root').style.setProperty('--num-columns', num_columns);
     grid_body.textContent = '';
     for (let i = 0; i < num_columns * num_rows; i++) {
-        const x = i % num_rows;
-        const y = Math.floor(i / num_rows);
+        const x = i % num_columns;
+        const y = Math.floor(i / num_columns);
         const div = document.createElement('div');
         grid_body.appendChild(div);
         div.classList.add('tile');
@@ -376,7 +376,7 @@ class SelectedTile {
             case SelectedTile.One:
                 switch (shift_enum) {
                     case SelectedTile.Down:
-                        if (this.select.y + 1 < columns) {
+                        if (this.select.y + 1 < rows) {
                             this.select.y += 1;
                         }
                         break;
@@ -391,7 +391,7 @@ class SelectedTile {
                         }
                         break;
                     case SelectedTile.Right:
-                        if (this.select.x + 1 < rows) {
+                        if (this.select.x + 1 < columns) {
                             this.select.x += 1;
                         }
                 }
@@ -400,7 +400,7 @@ class SelectedTile {
                 switch (shift_enum) {
                     case SelectedTile.Down:
                         //Lowermost boundary is p.y + s.y - 1. Then add + 1 to check the next tile.
-                        if (this.select.p.y + this.select.s.y < columns) {
+                        if (this.select.p.y + this.select.s.y < rows) {
                             this.select.p.y += 1;
                         }
                         break;
@@ -416,7 +416,7 @@ class SelectedTile {
                         break;
                     case SelectedTile.Right:
                         //Rightmost boundary is p.x + s.x - 1. Then add + 1 to check the next tile.
-                        if (this.select.p.x + this.select.s.x < rows) {
+                        if (this.select.p.x + this.select.s.x < columns) {
                             this.select.p.x += 1;
                         }
                         break;
@@ -425,16 +425,16 @@ class SelectedTile {
         }
     }
     get_div_array() {
-        console.assert(grid_body != null && rows != null, 'grid_body and rows must not be null');
+        console.assert(grid_body != null && columns != null, 'grid_body and columns must not be null');
         const array = [];
         switch (this.type) {
             case SelectedTile.One:
-                array.push(grid_body.children[this.select.y * rows + this.select.x]);
+                array.push(grid_body.children[this.select.y * columns + this.select.x]);
                 break;
             case SelectedTile.Many:
                 for (let j = this.select.p.y; j < this.select.p.y + this.select.s.y; j++) {
                     for (let i = this.select.p.x; i < this.select.p.x + this.select.s.x; i++) {
-                        array.push(grid_body.children[j * rows + i]);
+                        array.push(grid_body.children[j * columns + i]);
                     }
                 }
         }
@@ -448,12 +448,12 @@ class SelectedTile {
         console.assert(grid_body != null, 'grid_body must not be null');
         let copy_data = SelectedTile.ClipboardHeader;
         if (this.type == SelectedTile.One) {
-            const div = grid_body.children[this.select.y * rows + this.select.x];
+            const div = grid_body.children[this.select.y * columns + this.select.x];
             copy_data += MsType.$js_ch[div.dataset.ms_type] + ',';
         } else if (this.type == SelectedTile.Many) {
             for (let j = this.select.p.y; j < this.select.p.y + this.select.s.y; j++) {
                 for (let i = this.select.p.x; i < this.select.p.x + this.select.s.x; i++) {
-                    const div = grid_body.children[j * rows + i];
+                    const div = grid_body.children[j * columns + i];
                     copy_data += MsType.$js_ch[div.dataset.ms_type];
                     if (clear_data)
                         assign_selected_f.bind({
@@ -486,7 +486,7 @@ class SelectedTile {
             for (let ch_i = 0; ch_i < pasted_text.length; ch_i++) {
                 let tile_enum;
                 if ((tile_enum = ch_to_tile_enum.get(pasted_text[ch_i])) !== undefined) {
-                    if (tp.x < rows && tp.y < columns) {
+                    if (tp.x < columns && tp.y < rows) {
                         assign_selected_f.bind({
                             tile: tile_enum, selected_tile: new SelectedTile({
                                 t: SelectedTile.One, p: new TilePoint(tp.x, tp.y)
@@ -626,8 +626,8 @@ function set_tile(x, y, ms_type) {
     update_tile(x, y);
 }
 function update_tile(x, y) {
-    console.assert(rows !== null && columns !== null, 'rows and columns have not been set yet');
-    const i = y * rows + x;
+    console.assert(columns !== null, 'columns have not been set yet');
+    const i = y * columns + x;
     const div = grid_body.children[i];
     clear_probability(div);
     const ms_type = WasmExports.QueryTile(x, y);
@@ -646,9 +646,9 @@ function clear_probability(div) {
     delete div.dataset.error;
 }
 function get_default_tile_description() {
-    console.assert(grid_body != null && rows != null, 'grid_body and rows must not be null');
+    console.assert(grid_body != null && columns != null, 'grid_body and columns must not be null');
     if (selected_tile.type == SelectedTile.One) {
-        const div = grid_body.children[selected_tile.select.y * rows + selected_tile.select.x];
+        const div = grid_body.children[selected_tile.select.y * columns + selected_tile.select.x];
         let status;
         if ((status = div.dataset.error) !== undefined) return CalculateStatus.$error_message[status];
     }
@@ -747,8 +747,8 @@ class MFGList {
                 const pb = format_percentage(a_numerator, a_denominator);
                 const x = mfg.x;
                 const y = mfg.y;
-                const div = grid_body.children[y * rows + x];
-                div.textContent = `\\( {\\tiny${pb}\\\%} \\)`;
+                const div = grid_body.children[y * columns + x];
+                div.textContent = `\\( {\\small${pb}\\\%} \\)`;
                 renderMathInElement(div);
                 if (a_numerator == a_denominator)
                     div.classList.add('tile-pb-mine');
@@ -761,7 +761,7 @@ class MFGList {
         [...grid_body.children].forEach(div => { //Fill Non-adjacent unknown tiles with the same probability
             if (div.dataset.ms_type == MsType.unknown && div.dataset.probability === undefined) {
                 const pb = format_percentage(na_numerator, na_denominator);
-                div.textContent = `\\( {\\tiny${pb}\\\%} \\)`;
+                div.textContent = `\\( {\\small${pb}\\\%} \\)`;
                 renderMathInElement(div);
                 if (na_numerator == na_denominator)
                     div.classList.add('tile-pb-mine');
@@ -828,7 +828,7 @@ function parse_probability_list(c_arr_ptr) {
                     }
                     mfg_list.add_local(ca_i, mfg);
                     if (!get_gm_probability.checked) {
-                        const div = grid_body.children[y * rows + x];
+                        const div = grid_body.children[y * columns + x];
                         div.textContent = `\\( \\frac{${count}}{${total_solutions}} \\)`;
                         renderMathInElement(div);
                         if (count == total_solutions)
@@ -856,7 +856,7 @@ function parse_probability_list(c_arr_ptr) {
                 for (let tl_i = 0; tl_i < tl_len; tl_i++) {
                     const x = tl_arr.getUint32(tl_i * TileLocation.$size + TileLocation.x.offset, true);
                     const y = tl_arr.getUint32(tl_i * TileLocation.$size + TileLocation.y.offset, true);
-                    const div = grid_body.children[y * rows + x];
+                    const div = grid_body.children[y * columns + x];
                     div.textContent = 'Err!';
                     div.classList.add('tile-pb-error');
                     div.dataset.probability = 'y';
@@ -904,9 +904,9 @@ function end_progress() {
     progress_div.style.display = 'none';
     calculate_probability.textContent = 'Calculate Probability';
 }
-function create_board_pattern(div_parent, num_rows, tile_string) {
+function create_board_pattern(div_parent, num_columns, tile_string) {
     div_parent.classList.add('tile-template');
-    div_parent.style.setProperty('--num-rows', num_rows);
+    div_parent.style.setProperty('--num-columns', num_columns);
     for (let ch_i = 0; ch_i < tile_string.length; ch_i++) {
         const this_ch = tile_string[ch_i];
         const next_ch = (ch_i != tile_string.length) ? tile_string[ch_i + 1] : null;

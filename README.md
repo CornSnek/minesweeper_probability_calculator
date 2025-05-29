@@ -21,4 +21,4 @@ Python 3 is also used to build the server to build and test the website: `zig bu
 
 
 ## TODO
-- Fix rename row/column elements as I confused both of them as the other.
+- Make global mine count probability more accessible.
