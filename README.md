@@ -21,4 +21,4 @@ Python 3 is also used to build the server to build and test the website: `zig bu
 
 
 ## TODO
-- Create global mine probability calculations as shown from this page https://www.lrvideckis.com/blog/2020/07/17/minesweeper_probability.html. Right now, this shows only the adjacent tiles probability.
+- Fix rename row/column elements as I confused both of them as the other.

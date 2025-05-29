@@ -1,4 +1,8 @@
-import { PrintType, MsType, CalculateArray, CalculateStatus, Calculate, ProbabilityList, LocationCount, IDToLocationExtern, TileLocation } from './wasm_to_js.js'
+import {
+    PrintType, MsType, CalculateArray,
+    CalculateStatus, Calculate, ProbabilityList,
+    LocationCount, IDToLocationExtern, TileLocation, MineFrequency
+} from './wasm_to_js.js'
 let WasmObj = null;
 let WasmExports = null;
 let calculate_worker = null;
@@ -22,7 +26,11 @@ let show_results_check;
 let progress_div;
 let calculate_progress;
 let subsystem_progress;
-let patterns_body;
+let flash_body;
+let flash_close;
+let flash_content;
+let get_gm_probability;
+let gm_count;
 let rows = null;
 let columns = null;
 let keybind_map = new Map();
@@ -101,7 +109,11 @@ async function init() {
     calculate_progress = document.getElementById('calculate-progress');
     subsystem_progress = document.getElementById('subsystem-progress');
     progress_div = document.getElementById('progress-div');
-    patterns_body = document.getElementById('patterns-body');
+    flash_body = document.getElementById('flash-body');
+    flash_close = document.getElementById('flash-close');
+    flash_content = document.getElementById('flash-content');
+    get_gm_probability = document.getElementById('get-gm-probability');
+    gm_count = document.getElementById('gm-count');
     size_image = size_image = parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--size-image').trim());
     for (const tile_name of MsType.$$names) {
         const ms_type = MsType[tile_name];
@@ -170,8 +182,9 @@ async function init() {
             tab_elem.onclick = (e) => show_tab(tab_elem, tab_id);
         }
     });
-    rows_num.onchange = e => rows_num.value = Math.min(Math.max(parseInt(rows_num.value), 1), 100);;
-    columns_num.onchange = e => columns_num.value = Math.min(Math.max(parseInt(columns_num.value), 1), 100);;
+    rows_num.onchange = e => rows_num.value = Math.min(Math.max(parseInt(rows_num.value), 1), 100);
+    columns_num.onchange = e => columns_num.value = Math.min(Math.max(parseInt(columns_num.value), 1), 100);
+    gm_count.onchange = e => gm_count.value = Math.max(parseInt(gm_count.value), 0);
     generate_grid.onclick = e => {
         if (is_calculating) return;
         if (confirm('Are you sure? This will clear all tiles.')) {
@@ -180,13 +193,16 @@ async function init() {
     };
     calculate_probability.onclick = e => {
         if (!is_calculating) {
+            hide_flash();
             start_progress();
             deselect_tiles_f();
             calculate_worker.postMessage(['f', 'CalculateProbability']);
             SetTimeoutProgress(0, 0.0);
             calculate_probability.textContent = 'Cancel Calculation';
-        } else
+        } else {
             Atomics.store(new Uint8Array(WasmMemory.buffer), WasmExports.CancelCalculation.value, 1);
+            flash_message(FLASH_ERROR, 'Cancelled Calculation');
+        }
     };
     clear_probability_button.onclick = clear_all_probability;
     clear_all_button.onclick = e => {
@@ -205,13 +221,33 @@ async function init() {
     calculate_worker.postMessage(['m', WasmMemory]);
     document.querySelectorAll('#patterns-body .tile-template').forEach(div => {
         create_board_pattern(div, div.dataset.nrows, div.dataset.str);
-        div.onclick=e=>{
-            const copy_data=SelectedTile.ClipboardHeader+div.dataset.str.replace(/[cv][.?]/g,'c');
+        div.onclick = e => {
+            const copy_data = SelectedTile.ClipboardHeader + div.dataset.str.replace(/[cv][.?]/g, 'c');
             navigator.clipboard.writeText(copy_data).catch(err => console.warn('Clipboard copy failed: ' + err));
+            flash_message(FLASH_SUCCESS, 'Copied to Clipboard');
         };
     });
+    flash_close.onclick = hide_flash;
     console.log('Waiting for KaTeX module...');
     wait_katex();
+}
+const FLASH_ERROR = 0;
+const FLASH_SUCCESS = 1;
+function flash_message(type, message) {
+    flash_body.style.display = 'inline-flex';
+    flash_content.textContent = message;
+    if (type === FLASH_SUCCESS) {
+        flash_body.classList.add('flash-success');
+        flash_body.classList.remove('flash-error');
+    } else if (type === FLASH_ERROR) {
+        flash_body.classList.add('flash-error');
+        flash_body.classList.remove('flash-success');
+    } else {
+        console.err('Invalid flash_message type');
+    }
+}
+function hide_flash() {
+    flash_body.style.display = 'none';
 }
 const worker_handler_module = {
     JSPrint,
@@ -480,9 +516,10 @@ class SelectedTile {
 const selected_tile = new SelectedTile();
 const ch_to_tile_enum = new Map();
 MsType.$js_ch.forEach((ch, i) => ch_to_tile_enum.set(ch, i));
-//Call tile_f_any depending on shift key and already selecting one tile
+//Call tile_select_f depending on shift key and already selecting one tile
 //to select more than one tile.
 function tile_select_f(e) {
+    hide_flash();
     console.assert(this instanceof SelectedTile, "The this instance should be SelectedTile");
     if (selected_tile.type != SelectedTile.None && shift_key_down) {
         //Get region based on the top left corner and the clicked tile (this)
@@ -617,6 +654,137 @@ function get_default_tile_description() {
     }
     return '';
 }
+class MineFrequencyGraph {
+    constructor(subsystem) {
+        this.subsystem = subsystem;
+        this.id = null; //null means the global mine frequency.
+        this.map = new Map();
+    }
+    assign_id(id, x, y) {
+        this.id = id;
+        this.x = x;
+        this.y = y;
+    }
+    assign_mf(m, f) {
+        this.map.set(m, BigInt(f));
+    }
+    convolve(other_map /*: MineFrequencyGraph*/) {
+        const new_map = new Map();
+        for (const [sm, sf] of this.map) {
+            for (const [om, of] of other_map) {
+                const nm = sm + om;
+                const nf = sf * of;
+                const old_nf = new_map.get(nm) || BigInt(0);
+                new_map.set(nm, old_nf + nf);
+            }
+        }
+        this.map = new_map;
+    }
+}
+function format_percentage(bnn, bnd) {
+    const per = (Number(bnn) / Number(bnd)) * 100;
+    if (bnn === bnd) return per.toFixed();
+    else if (per >= 10) return per.toFixed(1);
+    else return per.toFixed(2);
+}
+class MFGList {
+    constructor(len) {
+        this.global = new Array(len).fill(null); //Null represents if there is an error in a subsystem.
+        this.local = new Array(len).fill().map(() => new Array());
+    }
+    set_global(subsystem, mfg) {
+        this.global[subsystem] = mfg;
+    }
+    add_local(subsystem, mfg) {
+        this.local[subsystem].push(mfg);
+    }
+    convolve_all() {
+        const global_mult = new Array();
+        for (let i = 0; i < this.global.length; i++) {
+            if (this.global[i] === null) return false; //All subsystems must be valid
+            global_mult.push(new Map(this.global[i].map)); //Shallow clone when colvolving all MFGs
+        }
+        for (let i = 0; i < this.global.length; i++) {
+            for (let j = 0; j < global_mult.length; j++) { //Convolute each global/local MFG with other global MFG subsystems.
+                if (i == j) continue;
+                this.global[i].convolve(global_mult[j]);
+                this.local[i].forEach(mfg => mfg.convolve(global_mult[j]));
+            }
+        }
+        return true;
+    }
+    output_probability() {
+        const gmfg = this.global[0].map;
+        const global_mine_count = parseInt(gm_count.value);
+        let adjacent_tiles = 0;
+        this.local.forEach(mfg_arr => adjacent_tiles += mfg_arr.length);
+        let non_adjacent_tiles = 0;
+        [...grid_body.children].forEach(div => non_adjacent_tiles += div.dataset.ms_type == MsType.unknown);
+        non_adjacent_tiles -= adjacent_tiles;
+        //console.log(`AT: ${adjacent_tiles}, NAT: ${non_adjacent_tiles}`);
+        let a_denominator = 0n;
+        let na_denominator = 0n;
+        let na_numerator = 0n;
+        let max_gm = 0;
+        for (const [gm, gf] of gmfg) {
+            if (gm > global_mine_count) {
+                flash_message(FLASH_ERROR, `Error: Too little mines! The global mine count is ${global_mine_count}. More than one solution requires using ${gm} or more mines.`);
+                return;
+            }
+            a_denominator += gf * comb(non_adjacent_tiles, global_mine_count - gm);
+            na_numerator += comb(non_adjacent_tiles, global_mine_count - gm) * BigInt(global_mine_count - gm) / BigInt(non_adjacent_tiles);
+            na_denominator += comb(non_adjacent_tiles, global_mine_count - gm);
+            max_gm = Math.max(max_gm, gm);
+        }
+        if (a_denominator === 0n) {
+            flash_message(FLASH_ERROR, `Error: Too many mines! The global mine count is ${global_mine_count}. One solution has a maximum of ${max_gm} mines and there are ${non_adjacent_tiles} non-adjacent tiles to fill, resulting in the sum of only ${max_gm + non_adjacent_tiles} mines.`);
+            return;
+        }
+        this.local.forEach(mfg_arr => {
+            mfg_arr.forEach(mfg => {
+                let a_numerator = 0n;
+                for (const [gm, gf] of mfg.map) a_numerator += gf * comb(non_adjacent_tiles, global_mine_count - gm);
+                const pb = format_percentage(a_numerator, a_denominator);
+                const x = mfg.x;
+                const y = mfg.y;
+                const div = grid_body.children[y * rows + x];
+                div.textContent = `\\( {\\tiny${pb}\\\%} \\)`;
+                renderMathInElement(div);
+                if (a_numerator == a_denominator)
+                    div.classList.add('tile-pb-mine');
+                else if (a_numerator == 0n)
+                    div.classList.add('tile-pb-clear');
+                div.dataset.probability = 'y';
+            });
+        });
+        //console.log(na_numerator, na_denominator, (100 * Number(na_numerator) / Number(na_denominator)).toFixed(2));
+        [...grid_body.children].forEach(div => { //Fill Non-adjacent unknown tiles with the same probability
+            if (div.dataset.ms_type == MsType.unknown && div.dataset.probability === undefined) {
+                const pb = format_percentage(na_numerator, na_denominator);
+                div.textContent = `\\( {\\tiny${pb}\\\%} \\)`;
+                renderMathInElement(div);
+                if (na_numerator == na_denominator)
+                    div.classList.add('tile-pb-mine');
+                else if (na_numerator == 0n)
+                    div.classList.add('tile-pb-clear');
+                div.dataset.probability = 'y';
+            }
+        });
+    }
+}
+function comb(n, r) {
+    if (r < 0 || r > n) return 0n;
+    if (r === 0 || r === n) return 1n;
+    let res = 1n;
+    const nbig = BigInt(n);
+    const rbig = BigInt(r);
+    for (let i = 1n; i <= rbig; i++) {
+        res *= nbig - (rbig - i);
+        res /= i;
+    }
+    return res;
+}
+let mfg_list = new MFGList(0);
 function parse_probability_list(c_arr_ptr) {
     end_progress();
     deselect_tiles_f();
@@ -631,6 +799,7 @@ function parse_probability_list(c_arr_ptr) {
         const ca_ptr = calc_arr.getUint32(CalculateArray.ptr.offset, true);
         const ca_len = calc_arr.getUint32(CalculateArray.len.offset, true);
         if (ca_len == 0) return;
+        mfg_list = new MFGList(ca_len);
         const ca = new DataView(WasmMemory.buffer, ca_ptr, Calculate.$size * ca_len);
         for (let ca_i = 0; ca_i < ca_len; ca_i++) {
             const calc_status = ca.getUint8(ca_i * Calculate.$size + Calculate.status.offset, true);
@@ -638,22 +807,47 @@ function parse_probability_list(c_arr_ptr) {
             if (calc_status == CalculateStatus.ok) {
                 const pl = new DataView(WasmMemory.buffer, calc_ptr + Calculate.pl.offset, ProbabilityList.$size);
                 const total_solutions = pl.getUint32(ProbabilityList.total.offset, true);
-                const lc_ptr = pl.getUint32(ProbabilityList.ptr.offset, true);
-                const lc_len = pl.getUint32(ProbabilityList.len.offset, true);
+                const lc_ptr = pl.getUint32(ProbabilityList.lc_ptr.offset, true);
+                const lc_len = pl.getUint32(ProbabilityList.lc_len.offset, true);
                 const lc = new DataView(WasmMemory.buffer, lc_ptr, lc_len * LocationCount.$size);
                 for (let lc_i = 0; lc_i < lc_len; lc_i++) {
                     const x = lc.getUint32(lc_i * LocationCount.$size + LocationCount.x.offset, true);
                     const y = lc.getUint32(lc_i * LocationCount.$size + LocationCount.y.offset, true);
-                    const count = lc.getInt32(lc_i * LocationCount.$size + LocationCount.count.offset, true);
-                    const div = grid_body.children[y * rows + x];
-                    div.textContent = `\\( \\frac{${count}}{${total_solutions}} \\)`;
-                    renderMathInElement(div);
-                    if (count == total_solutions)
-                        div.classList.add('tile-pb-mine');
-                    else if (count == 0)
-                        div.classList.add('tile-pb-clear');
-                    div.dataset.probability = 'y';
+                    const count = lc.getUint32(lc_i * LocationCount.$size + LocationCount.count.offset, true);
+                    const mf_len = lc.getUint32(lc_i * LocationCount.$size + LocationCount.mf_len.offset, true);
+                    const mfg = new MineFrequencyGraph(ca_i);
+                    mfg.assign_id(lc_i, x, y);
+                    if (mf_len != 0) {
+                        const mf_ptr = lc.getUint32(lc_i * LocationCount.$size + LocationCount.mf_ptr.offset, true);
+                        const mf = new DataView(WasmMemory.buffer, mf_ptr, mf_len * MineFrequency.$size);
+                        for (let mf_i = 0; mf_i < mf_len; mf_i++) {
+                            const m = mf.getUint32(mf_i * MineFrequency.$size + MineFrequency.m.offset, true);
+                            const f = mf.getUint32(mf_i * MineFrequency.$size + MineFrequency.f.offset, true);
+                            mfg.assign_mf(m, f);
+                        }
+                    }
+                    mfg_list.add_local(ca_i, mfg);
+                    if (!get_gm_probability.checked) {
+                        const div = grid_body.children[y * rows + x];
+                        div.textContent = `\\( \\frac{${count}}{${total_solutions}} \\)`;
+                        renderMathInElement(div);
+                        if (count == total_solutions)
+                            div.classList.add('tile-pb-mine');
+                        else if (count == 0)
+                            div.classList.add('tile-pb-clear');
+                        div.dataset.probability = 'y';
+                    }
                 }
+                const mf_ptr = pl.getUint32(ProbabilityList.mf_ptr.offset, true);
+                const mf_len = pl.getUint32(ProbabilityList.mf_len.offset, true);
+                const mf = new DataView(WasmMemory.buffer, mf_ptr, mf_len * MineFrequency.$size);
+                const mfg_global = new MineFrequencyGraph(ca_i);
+                for (let mf_i = 0; mf_i < mf_len; mf_i++) {
+                    const m = mf.getUint32(mf_i * MineFrequency.$size + MineFrequency.m.offset, true);
+                    const f = mf.getUint32(mf_i * MineFrequency.$size + MineFrequency.f.offset, true);
+                    mfg_global.assign_mf(m, f);
+                }
+                mfg_list.set_global(ca_i, mfg_global);
             } else {
                 const tm = new DataView(WasmMemory.buffer, calc_ptr + Calculate.tm.offset, IDToLocationExtern.$size);
                 const tl_ptr = tm.getUint32(IDToLocationExtern.ptr.offset, true);
@@ -670,8 +864,10 @@ function parse_probability_list(c_arr_ptr) {
                 }
             }
         }
+        //console.log(mfg_list);
+        if (get_gm_probability.checked && mfg_list.convolve_all()) mfg_list.output_probability();
     } else {
-        console.error(CalculateStatus.$error_message[calc_arr_status]);
+        flash_message(FLASH_ERROR, 'Encountered an error: \'' + CalculateStatus.$error_message[calc_arr_status]) + '\'';
     }
 }
 function ClearResults() {

@@ -20,6 +20,7 @@
 </head>
 
 <body>
+  <div id="flash-body"><strong id="flash-close">X</strong><div id="flash-content"></div></div>
   <div id="grid-body" class="no-highlight"></div>
   <div id="all-right-tabs" class="right-tabs-normal">
     <div class="tabs-button" data-tab="about-tab">
@@ -167,6 +168,9 @@
             <div>
               This pattern is an extension of the <b>1-2</b> pattern, where the mines are always on the sides of the 2s and are touching the corner of the 1s.
               <div class="tile-template" data-nrows="6" data-str="c.c.v.v.c.c.,c.1221c.,c.x00xc.,cxxxxc,"></div>
+              <br>
+              Here is an example of a disguised 1-2-2-1 with the Flag Number Reduction pattern. The 1-2-3-3 column with the flags become a 1-2-2-1. Note: The mines could be in either side, but all the sides not near the 2s on the left/right are safe.
+              <div class="tile-template" data-nrows="3" data-str="c.c.c.,c.1c.,c2c,c3c,f3c.,fc.c.,"></div>
             </div>
           </li>
           <li>
@@ -246,7 +250,25 @@
             <b>1-1-1 and 1-1-1-1</b>
             <div>
               Using the <b>Flag Number Reduction</b> pattern, these patterns are disguised, but behave similarly to the <b>1-2-1</b> and <b>1-2-2-1</b> pattern. However, the mine and safe tiles for 1-2-1 and 1-2-2-1 are inversed for 1-1-1 and 1-1-1-1.
-              <div class="tile-template" data-nrows="6" data-str="fxxxfc,x212xc,xc.v.c.xc,cccccc,fxxxff,x2123x,xv.c.c.v.x,"></div>
+              <br>
+              Here is an example of a disguised 1-1-1
+              <div class="tile-template" data-nrows="3" data-str="xfx,c.2x,v.1x,c.4x,fff,"></div>
+              <br>
+              Here is an example of a disguised 1-1-1-1
+              <div class="tile-template" data-nrows="3" data-str="xfx,v.2x,c.1x,c.1x,v.4x,fff,"></div>
+            </div>
+          </li>
+          <li>
+            <b>Shared Mines in Regions</b>
+            <div>
+              For a region of tiles, if you know that mines can be shared for 2 different number tiles, you can use this information to do the <b>Flag Number Reduction</b> pattern to use with other patterns.
+              <br>
+              <br>
+              For a simple example, the rightmost 2 tile must share at least 2 mines in the ? regions with the leftmost 2 tile. Therefore, the leftmost 2 becomes a 0, thus the other adjacent tiles for the leftmost tile must be free due to the <b>Adjacent Tiles Near 0</b> pattern.
+              <div class="tile-template" data-nrows="5" data-str="xxxxx,xxc?xx,c.2c?2x,c.c.c?xx,"></div>
+              <br>
+              Here is another example that uses another pattern. For the 2 bottom tile numbers, 1 mine must be in one of the 2 tiles while the other is safe.<br>Moreover, the 2 number tile on top of the region shares the mine. This makes the 2 tile be a 1 tile.<br>Due to these circumstances, this creates a <b>2D 1-1</b> pattern, allowing the top tiles on the topmost 1 tile to be safe. 
+              <div class="tile-template" data-nrows="5" data-str="ccc.c.c.,ccc1x,ccc2x,cxc?c?x,xf21x,xxxxx,"></div>
             </div>
           </li>
         </ul>
@@ -265,9 +287,15 @@
         <input id="columns-num" value="10">
         <br>
         <button type="button" id="generate-grid">Generate</button>
-        <br>
+        <br><br>
         <label for="show-results-check>">Show Probability Results</label>
         <input type="checkbox" id="show-results-check">
+        <br><br>
+        <label for="get-gm-probability">Get Global Mine Probability</label>
+        <input type="checkbox" id="get-gm-probability">
+        <br>
+        <label for="gm-count">Global Mine Count</label>
+        <input id="gm-count" value="10">
       </div>
     </div>
     <div id="results-tab" class="options-gui panel-hide-right">

@@ -205,7 +205,7 @@ export fn CalculateProbability() [*c]shared.CalculateArray {
             };
             AppendResults(alloc_sm.items.ptr, alloc_sm.items.len);
             const this_mm = &mm_subsystems[i];
-            const pl = this_mm.solve_local_only(wasm_allocator, i) catch |e| {
+            const pl = this_mm.solve(wasm_allocator, i) catch |e| {
                 pl_list[i] = switch (e) {
                     error.OverFlag => .init_error(.overflag),
                     error.NoSolutionsFound => .init_error(.no_solutions_subsystem),
@@ -233,6 +233,35 @@ export fn CalculateProbability() [*c]shared.CalculateArray {
             }
             AppendResults(this_mm_str.items.ptr, this_mm_str.items.len);
         }
+        //This code shows the whole mine frequencies for the system as a whole for debugging.
+        //const whole_pl = mm_whole.solve(wasm_allocator, 0) catch |e| {
+        //    calculate_array = switch (e) {
+        //        else => |e2| v: {
+        //            std.log.err("{!}\n", .{e2});
+        //            break :v .init_error(.unknown);
+        //        },
+        //    };
+        //    break :error_happened;
+        //};
+        //defer whole_pl.deinit(wasm_allocator);
+        //std.log.debug("whole_pl total: {}\n", .{whole_pl.total});
+        //const mfs = whole_pl.mf_ptr[0..whole_pl.mf_len];
+        //const lcs = whole_pl.lc_ptr[0..whole_pl.lc_len];
+        //std.log.debug("mine_frequencies: ", .{});
+        //for (mfs) |mf| {
+        //    std.log.debug("{{ .m={}, .f={} }}, ", .{ mf.m, mf.f });
+        //}
+        //std.log.debug("\n", .{});
+        //std.log.debug("location_counts:\n", .{});
+        //for (lcs) |lc| {
+        //    std.log.debug("{{ {{ .x={}, .y={}, .count={} }} => .mf=[", .{ lc.x, lc.y, lc.count });
+        //    const lc_mfs = lc.mf_ptr[0..lc.mf_len];
+        //    for (lc_mfs) |lc_mf| {
+        //        std.log.debug("{{ .m={}, .f={} }}, ", .{ lc_mf.m, lc_mf.f });
+        //    }
+        //    std.log.debug("]}}\n", .{});
+        //}
+        //std.log.debug("\n\n", .{});
     }
     @atomicStore(bool, &CancelCalculation, false, .release);
     wasm_print.FlushPrint(false);

@@ -23,6 +23,7 @@ pub const CalculateStatus = enum(u8) {
 pub const TileLocation = @import("minesweeper.zig").TileLocation;
 pub const IDToLocationExtern = @import("minesweeper.zig").TileMap.IDToLocationExtern;
 pub const LocationCount = @import("minesweeper.zig").MinesweeperMatrix.LocationCount;
+pub const MineFrequency = @import("minesweeper.zig").MinesweeperMatrix.MineFrequency;
 pub const ProbabilityList = @import("minesweeper.zig").MinesweeperMatrix.ProbabilityList;
 pub const Calculate = extern struct {
     tm: IDToLocationExtern,

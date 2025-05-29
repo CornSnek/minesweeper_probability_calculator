@@ -36,7 +36,8 @@ a {
     text-decoration: none;
 }
 
-.tile-template, #grid-body {
+.tile-template,
+#grid-body {
     display: grid;
     --column-gap-calc: calc(var(--border-size) + 2px);
     column-gap: var(--column-gap-calc);
@@ -175,6 +176,31 @@ a {
     padding: 10px;
     z-index: 4;
     overflow-y: auto;
+}
+
+#flash-body {
+    display: none;
+    gap: 10px;
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    box-shadow: 0 2px 5px black;
+    z-index: 5;
+    background-color: var(--bg-1);
+    padding: 10px;
+}
+
+#flash-body.flash-error {
+    background-color: var(--ms-mine-clicked) !important;
+}
+
+#flash-body.flash-success {
+    background-color: var(--ms-probability-clear) !important;
+}
+
+#flash-close {
+    cursor: pointer;
 }
 
 .tabs-button {

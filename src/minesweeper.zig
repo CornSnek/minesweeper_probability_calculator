@@ -326,32 +326,72 @@ pub const MinesweeperMatrix = struct {
         x: usize,
         y: usize,
         count: i32,
+        mf_ptr: [*c]MineFrequency,
+        mf_len: usize,
+        pub fn deinit(self: LocationCount, allocator: std.mem.Allocator) void {
+            allocator.free(self.mf_ptr[0..self.mf_len]);
+        }
     };
+    pub const MineFrequency = extern struct {
+        m: usize,
+        f: usize = 0,
+        pub const Context = struct {
+            pub fn lt(a: MineFrequency, b: MineFrequency) bool {
+                return a.m < b.m;
+            }
+            pub fn eq(a: MineFrequency, b: MineFrequency) bool {
+                return a.m == b.m;
+            }
+        };
+    };
+    pub const MineFrequencyMap = sorted_list.SortedList(MineFrequency, MineFrequency.Context);
     pub const ProbabilityList = extern struct {
         total: usize,
-        ptr: [*c]LocationCount,
-        len: usize,
-        pub const empty: ProbabilityList = .{ .total = 0, .ptr = 0, .len = 0 };
-        pub fn init(allocator: std.mem.Allocator, total: usize, tm: TileMap, valuesl: *ValuesList) !ProbabilityList {
+        mf_ptr: [*c]MineFrequency,
+        mf_len: usize,
+        lc_ptr: [*c]LocationCount,
+        lc_len: usize,
+        pub const empty: ProbabilityList = .{ .total = 0, .lc_ptr = 0, .lc_len = 0, .mf_ptr = 0, .mf_len = 0 };
+        pub fn init(
+            allocator: std.mem.Allocator,
+            total: usize,
+            total_mf_map: *MineFrequencyMap,
+            tm: TileMap,
+            valuesl: *ValuesList,
+            location_mf_map: *std.ArrayListUnmanaged(MineFrequencyMap),
+        ) !ProbabilityList {
             std.debug.assert(tm.idtol.items.len == valuesl.items.len);
             var pl: ProbabilityList = undefined;
             pl.total = total;
-            //Because of extern struct, separate the .ptr and .len
+            //Because of extern struct, separate the ptr and len from slices.
+            const total_mf_arr = try total_mf_map.list.toOwnedSlice(allocator);
+            errdefer allocator.free(total_mf_arr);
+            pl.mf_ptr = total_mf_arr.ptr;
+            pl.mf_len = total_mf_arr.len;
             const lc_arr = try allocator.alloc(LocationCount, tm.idtol.items.len);
-            pl.ptr = lc_arr.ptr;
-            pl.len = lc_arr.len;
+            errdefer allocator.free(lc_arr);
+            pl.lc_ptr = lc_arr.ptr;
+            pl.lc_len = lc_arr.len;
             for (0..tm.idtol.items.len) |i| {
+                const mf_arr = try location_mf_map.items[i].list.toOwnedSlice(allocator);
                 lc_arr[i] = .{
                     .x = tm.idtol.items[i].x,
                     .y = tm.idtol.items[i].y,
                     .count = valuesl.items[i],
+                    .mf_ptr = mf_arr.ptr,
+                    .mf_len = mf_arr.len,
                 };
             }
             return pl;
         }
         pub fn deinit(self: ProbabilityList, allocator: std.mem.Allocator) void {
-            if (self.ptr != 0)
-                allocator.free(self.ptr[0..self.len]);
+            if (self.lc_ptr != 0) { //self.mf_ptr is also implicitly 0
+                allocator.free(self.mf_ptr[0..self.mf_len]);
+                const lc_arr = self.lc_ptr[0..self.lc_len];
+                for (lc_arr) |lc|
+                    lc.deinit(allocator);
+                allocator.free(lc_arr);
+            }
         }
     };
     pub fn separate_subsystems(self: MinesweeperMatrix, allocator: std.mem.Allocator) ![]MinesweeperMatrix {
@@ -543,8 +583,20 @@ pub const MinesweeperMatrix = struct {
             }
         }
     }
-    pub fn solve_local_only(self: *MinesweeperMatrix, allocator: std.mem.Allocator, subsystem_id: usize) !ProbabilityList {
+    pub fn solve(self: *MinesweeperMatrix, allocator: std.mem.Allocator, subsystem_id: usize) !ProbabilityList {
         try self.solve_rref(allocator);
+        var mines_value_list: ValuesList = .empty;
+        defer mines_value_list.deinit(allocator);
+        try mines_value_list.appendNTimes(allocator, 0, self.tm.idtol.items.len);
+        var location_mf_map: std.ArrayListUnmanaged(MineFrequencyMap) = .empty;
+        defer {
+            for (location_mf_map.items) |*mf|
+                mf.deinit(allocator);
+            location_mf_map.deinit(allocator);
+        }
+        try location_mf_map.appendNTimes(allocator, .empty, self.tm.idtol.items.len);
+        var total_mf_map: MineFrequencyMap = .empty;
+        defer total_mf_map.deinit(allocator);
         if (self.tm.idtol.items.len != 0) {
             var free_map: std.ArrayListUnmanaged(u32) = .empty;
             defer free_map.deinit(allocator);
@@ -577,13 +629,6 @@ pub const MinesweeperMatrix = struct {
             try bui_free_counter.pad(allocator, total_free_count / 8 + 1);
             bui_free_max.set(total_free_count);
             var total: usize = 0;
-            var mines_value_list: ValuesList = .empty;
-            defer mines_value_list.deinit(allocator);
-            try mines_value_list.appendNTimes(allocator, 0, self.tm.idtol.items.len);
-            var mines_keys: std.ArrayListUnmanaged(usize) = .empty;
-            defer mines_keys.deinit(allocator);
-            var frequency_map: std.AutoHashMapUnmanaged(usize, usize) = .empty;
-            defer frequency_map.deinit(allocator);
             const wasm_main = @import("wasm_main.zig");
             while (bui_free_counter.order(bui_free_max) != .eq) : (try bui_free_counter.add_one(allocator)) {
                 if (UsingWasm and @atomicLoad(bool, &wasm_main.CalculateStatus, .acquire)) {
@@ -600,38 +645,44 @@ pub const MinesweeperMatrix = struct {
                     if (bui_free_counter.bit(i))
                         bui_solution.set(offset);
                 if (try self.verify_solution(allocator, &bui_solution)) {
-                    for (0..self.tm.idtol.items.len) |i|
-                        mines_value_list.items[i] += @intFromBool(bui_solution.bit(i));
+                    for (0..self.tm.idtol.items.len) |id|
+                        mines_value_list.items[id] += @intFromBool(bui_solution.bit(id));
                     if (UsingWasm) {
                         const pop_count = bui_solution.pop_count();
-                        const gop = try frequency_map.getOrPut(allocator, pop_count);
-                        if (!gop.found_existing) {
-                            gop.value_ptr.* = 0;
-                            try mines_keys.append(allocator, pop_count);
+                        _ = try total_mf_map.insert_unique(allocator, .{ .m = pop_count });
+                        const mf_i = total_mf_map.search(.{ .m = pop_count }).?;
+                        total_mf_map.list.items[mf_i].f += 1;
+                        for (0..self.tm.idtol.items.len) |id| {
+                            if (bui_solution.bit(id)) {
+                                _ = try location_mf_map.items[id].insert_unique(allocator, .{ .m = pop_count });
+                                const l_mf_i = location_mf_map.items[id].search(.{ .m = pop_count }).?;
+                                location_mf_map.items[id].list.items[l_mf_i].f += 1;
+                            }
                         }
-                        gop.value_ptr.* += 1;
                     }
                     total += 1;
                 }
             }
             if (UsingWasm) {
-                std.sort.block(usize, mines_keys.items, {}, struct {
-                    fn f(_: void, lhs: usize, rhs: usize) bool {
-                        return lhs < rhs;
-                    }
-                }.f);
                 var results_str: std.ArrayListUnmanaged(u8) = .empty;
                 defer results_str.deinit(allocator);
                 try results_str.writer(allocator).print("Total valid solutions found for this subsystem: {}<br>", .{total});
-                for (mines_keys.items) |m|
-                    try results_str.writer(allocator).print("{} solution(s) have {} total mines.<br>", .{ frequency_map.get(m).?, m });
+                for (total_mf_map.list.items) |mf| {
+                    try results_str.writer(allocator).print("{} solution(s) have {} total mines.<br>", .{ mf.f, mf.m });
+                }
                 wasm_main.AppendResults(results_str.items.ptr, results_str.items.len);
+                //This code shows the mine frequencies for each subsystem
+                //for (location_mf_map.items, 0..) |lmf, id| {
+                //    std.log.debug("ID #{}: ", .{id});
+                //    for (lmf.list.items) |mf| {
+                //        std.log.debug("{{ .m={}, .f={} }}, ", .{ mf.m, mf.f });
+                //    }
+                //    std.log.debug("\n", .{});
+                //}
             }
-            return try ProbabilityList.init(allocator, total, self.tm, &mines_value_list);
+            return try ProbabilityList.init(allocator, total, &total_mf_map, self.tm, &mines_value_list, &location_mf_map);
         }
-        var mines_value_list: ValuesList = .empty;
-        defer mines_value_list.deinit(allocator);
-        return try ProbabilityList.init(allocator, 0, self.tm, &mines_value_list);
+        return try ProbabilityList.init(allocator, 0, &total_mf_map, self.tm, &mines_value_list, &location_mf_map);
     }
     fn verify_solution(self: MinesweeperMatrix, allocator: std.mem.Allocator, bui_solution: *big_number.BigUInt) !bool {
         for (0..self.lcs.items.len) |i| {
@@ -1209,7 +1260,7 @@ test "Tilemap.to_minesweeper_matrix" {
         defer mp_status.ok.deinit(t_allocator);
         var mm = try mp_status.ok.to_minesweeper_matrix(t_allocator);
         defer mm.deinit(t_allocator);
-        const pr_list = try mm.solve_local_only(t_allocator, 0);
+        const pr_list = try mm.solve(t_allocator, 0);
         defer pr_list.deinit(t_allocator);
     } else {
         return error.UnexpectedStatus;
@@ -1231,7 +1282,7 @@ test "MinesweeperMatrix.separate_subsystems" {
             t_allocator.free(mms);
         }
         for (mms) |*mm_sub| {
-            const solved = try mm_sub.solve_local_only(t_allocator, 0);
+            const solved = try mm_sub.solve(t_allocator, 0);
             defer solved.deinit(t_allocator);
             std.debug.print("{any}\n", .{solved});
         }
