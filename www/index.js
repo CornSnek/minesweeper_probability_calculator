@@ -134,7 +134,7 @@ async function init() {
                 image_div.classList.remove('tile-hovered');
                 tile_description.textContent = get_default_tile_description();
             };
-            update_tile_div(image_div);
+            update_tile_div(image_div, false); //Don't show as clicked.
             const keybind_div = document.createElement('div');
             container_div.appendChild(keybind_div);
             keybind_div.innerHTML = `<strong class="badge">${MsType.$js_ch[ms_type].toUpperCase()}</strong>`;
@@ -188,7 +188,7 @@ async function init() {
     generate_grid.onclick = e => {
         if (is_calculating) return;
         if (confirm('Are you sure? This will clear all tiles.')) {
-            init_grid(parseInt(columns_num.value),parseInt(rows_num.value));
+            init_grid(parseInt(columns_num.value), parseInt(rows_num.value));
         }
     };
     calculate_probability.onclick = e => {
@@ -319,7 +319,7 @@ function init_grid(num_columns, num_rows) {
         div.onmouseenter = () => div.classList.add('tile-hovered');
         div.onmouseleave = () => div.classList.remove('tile-hovered');
     }
-    for (const div of grid_body.children) update_tile_div(div);
+    for (const div of grid_body.children) update_tile_div(div, true);
 }
 class TilePoint {
     constructor(x, y) {
@@ -602,15 +602,17 @@ function deselect_tiles_f(e) {
     selected_tile.select_none();
     keybind_map.clear();
 }
-function update_tile_div(div) {
+function update_tile_div(div, use_is_clicked) {
     const ms_type = div.dataset.ms_type;
-    if (MsType.$is_clicked[ms_type]) {
-        div.classList.add('tile-clicked');
-        if (ms_type == MsType.mine)
-            div.classList.add('tile-mine');
-    } else {
-        div.classList.remove('tile-clicked');
-        div.classList.remove('tile-mine');
+    if (use_is_clicked) {
+        if (MsType.$is_clicked[ms_type]) {
+            div.classList.add('tile-clicked');
+            if (ms_type == MsType.mine)
+                div.classList.add('tile-mine');
+        } else {
+            div.classList.remove('tile-clicked');
+            div.classList.remove('tile-mine');
+        }
     }
     console.assert(div.dataset.ms_type < MsType.$$length, 'ms_type enum is out of range');
     const image_url = MsType.$image_url[ms_type];
@@ -632,7 +634,7 @@ function update_tile(x, y) {
     clear_probability(div);
     const ms_type = WasmExports.QueryTile(x, y);
     div.dataset.ms_type = ms_type;
-    update_tile_div(div);
+    update_tile_div(div, true);
 }
 function clear_all_probability() {
     document.querySelectorAll('[data-probability]').forEach(clear_probability);
@@ -714,7 +716,8 @@ class MFGList {
         return true;
     }
     output_probability() {
-        const gmfg = this.global[0].map;
+        let gmfg = null;
+        if (this.global.length !== 0) gmfg = this.global[0].map;
         const global_mine_count = parseInt(gm_count.value);
         let adjacent_tiles = 0;
         this.local.forEach(mfg_arr => adjacent_tiles += mfg_arr.length);
@@ -726,19 +729,21 @@ class MFGList {
         let na_denominator = 0n;
         let na_numerator = 0n;
         let max_gm = 0;
-        for (const [gm, gf] of gmfg) {
-            if (gm > global_mine_count) {
-                flash_message(FLASH_ERROR, `Error: Too little mines! The global mine count is ${global_mine_count}. More than one solution requires using ${gm} or more mines.`);
+        if (gmfg !== null) {
+            for (const [gm, gf] of gmfg) {
+                if (gm > global_mine_count) {
+                    flash_message(FLASH_ERROR, `Error: Too little mines! The global mine count is ${global_mine_count}. More than one solution requires using ${gm} or more mines.`);
+                    return;
+                }
+                a_denominator += gf * comb(non_adjacent_tiles, global_mine_count - gm);
+                na_numerator += comb(non_adjacent_tiles, global_mine_count - gm) * BigInt(global_mine_count - gm) / BigInt(non_adjacent_tiles);
+                na_denominator += comb(non_adjacent_tiles, global_mine_count - gm);
+                max_gm = Math.max(max_gm, gm);
+            }
+            if (a_denominator === 0n) {
+                flash_message(FLASH_ERROR, `Error: Too many mines! The global mine count is ${global_mine_count}. One solution has a maximum of ${max_gm} mines and there are ${non_adjacent_tiles} non-adjacent tiles to fill, resulting in the sum of only ${max_gm + non_adjacent_tiles} mines.`);
                 return;
             }
-            a_denominator += gf * comb(non_adjacent_tiles, global_mine_count - gm);
-            na_numerator += comb(non_adjacent_tiles, global_mine_count - gm) * BigInt(global_mine_count - gm) / BigInt(non_adjacent_tiles);
-            na_denominator += comb(non_adjacent_tiles, global_mine_count - gm);
-            max_gm = Math.max(max_gm, gm);
-        }
-        if (a_denominator === 0n) {
-            flash_message(FLASH_ERROR, `Error: Too many mines! The global mine count is ${global_mine_count}. One solution has a maximum of ${max_gm} mines and there are ${non_adjacent_tiles} non-adjacent tiles to fill, resulting in the sum of only ${max_gm + non_adjacent_tiles} mines.`);
-            return;
         }
         this.local.forEach(mfg_arr => {
             mfg_arr.forEach(mfg => {
@@ -757,6 +762,11 @@ class MFGList {
                 div.dataset.probability = 'y';
             });
         });
+        //Probability of an empty matrix (All unknowns) is just (number of mines)/(number of non-adjacent tiles)
+        if(this.global.length===0){
+            na_denominator = non_adjacent_tiles;
+            na_numerator = global_mine_count;
+        }
         //console.log(na_numerator, na_denominator, (100 * Number(na_numerator) / Number(na_denominator)).toFixed(2));
         [...grid_body.children].forEach(div => { //Fill Non-adjacent unknown tiles with the same probability
             if (div.dataset.ms_type == MsType.unknown && div.dataset.probability === undefined) {
@@ -798,9 +808,10 @@ function parse_probability_list(c_arr_ptr) {
     if (calc_arr_status == CalculateStatus.ok) {
         const ca_ptr = calc_arr.getUint32(CalculateArray.ptr.offset, true);
         const ca_len = calc_arr.getUint32(CalculateArray.len.offset, true);
-        if (ca_len == 0) return;
         mfg_list = new MFGList(ca_len);
-        const ca = new DataView(WasmMemory.buffer, ca_ptr, Calculate.$size * ca_len);
+        let ca;
+        //ca_ptr is 'undefined' in zig when ca_len is 0.
+        if (ca_len !== 0) ca = new DataView(WasmMemory.buffer, ca_ptr, Calculate.$size * ca_len);
         for (let ca_i = 0; ca_i < ca_len; ca_i++) {
             const calc_status = ca.getUint8(ca_i * Calculate.$size + Calculate.status.offset, true);
             const calc_ptr = ca_ptr + ca_i * Calculate.$size;
@@ -864,7 +875,6 @@ function parse_probability_list(c_arr_ptr) {
                 }
             }
         }
-        //console.log(mfg_list);
         if (get_gm_probability.checked && mfg_list.convolve_all()) mfg_list.output_probability();
     } else {
         flash_message(FLASH_ERROR, 'Encountered an error: \'' + CalculateStatus.$error_message[calc_arr_status]) + '\'';
@@ -916,7 +926,7 @@ function create_board_pattern(div_parent, num_columns, tile_string) {
             div_parent.appendChild(tile_div);
             tile_div.classList.add('tile');
             tile_div.dataset.ms_type = tile_enum;
-            update_tile_div(tile_div);
+            update_tile_div(tile_div, true);
             if (next_ch == '.') {
                 if (tile_enum == MsType.unknown) {
                     tile_div.classList.add('tile-pb-clear');

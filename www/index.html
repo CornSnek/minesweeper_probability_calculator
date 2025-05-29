@@ -33,8 +33,23 @@
     <div class="tabs-button" data-tab="patterns-tab">
       Minesweeper Patterns
     </div>
-    <div class="tabs-button" data-tab="options-tab">
-      Options
+    <div>
+      <label for="columns-num">Columns</label>
+      <input id="columns-num" value="10" size="3">
+      <br>
+      <label for="rows-num">Rows</label>
+      <input id="rows-num" value="10" size="3">
+      <br>
+      <button type="button" id="generate-grid">Generate</button>
+      <br><br>
+      <label for="show-results-check>">Show Results When Done</label>
+      <input type="checkbox" id="show-results-check">
+      <br><br>
+      <label for="get-gm-probability">Use Global Mine Probability</label>
+      <input type="checkbox" id="get-gm-probability">
+      <br>
+      <label for="gm-count">Count</label>
+      <input id="gm-count" value="10" size="5">
     </div>
     <div id="calculate-probability" class="tabs-button">
       Calculate Probability
@@ -272,30 +287,6 @@
             </div>
           </li>
         </ul>
-      </div>
-    </div>
-    <div id="options-tab" class="options-gui panel-hide-right">
-      <div>
-        <a href="#" class="close-options-panel"><strong class="badge">Close</strong></a>
-      </div>
-      <br>
-      <div>
-        <label for="columns-num">Columns</label>
-        <input id="columns-num" value="10">
-        <br>
-        <label for="rows-num">Rows</label>
-        <input id="rows-num" value="10">
-        <br>
-        <button type="button" id="generate-grid">Generate</button>
-        <br><br>
-        <label for="show-results-check>">Show Probability Results</label>
-        <input type="checkbox" id="show-results-check">
-        <br><br>
-        <label for="get-gm-probability">Get Global Mine Probability</label>
-        <input type="checkbox" id="get-gm-probability">
-        <br>
-        <label for="gm-count">Global Mine Count</label>
-        <input id="gm-count" value="10">
       </div>
     </div>
     <div id="results-tab" class="options-gui panel-hide-right">
