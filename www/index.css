@@ -88,6 +88,12 @@ a {
     background-position: center;
 }
 
+.tile.tile-pb-color {
+    color: black;
+    --tile-color: var(--ms-unknown);
+    background-color: var(--tile-color);
+}
+
 .tile.tile-pb-mine {
     color: white;
     background-color: var(--ms-probability-mine);

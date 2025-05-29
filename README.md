@@ -22,3 +22,4 @@ Python 3 is also used to build the server to build and test the website: `zig bu
 
 ## TODO
 - Change probability calculations whenever partial solutions don't trigger the 'Too Many Global Mines' error
+- Add a page that describes the Global Mine Probability calculation

@@ -37,6 +37,7 @@ let keybind_map = new Map();
 let shift_key_down = false;
 let ctrl_key_down = false;
 let is_calculating = false;
+let tile_colors = {};
 function do_print(str, print_type) {
     if (print_type === PrintType.log) {
         console.log(str);
@@ -114,7 +115,11 @@ async function init() {
     flash_content = document.getElementById('flash-content');
     get_gm_probability = document.getElementById('get-gm-probability');
     gm_count = document.getElementById('gm-count');
-    size_image = size_image = parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--size-image').trim());
+    const root_comp = getComputedStyle(document.documentElement);
+    size_image = size_image = parseFloat(root_comp.getPropertyValue('--size-image').trim());
+    tile_colors.neutral = root_comp.getPropertyValue('--ms-probability');
+    tile_colors.mine = root_comp.getPropertyValue('--ms-probability-mine');
+    tile_colors.clear = root_comp.getPropertyValue('--ms-probability-clear');
     for (const tile_name of MsType.$$names) {
         const ms_type = MsType[tile_name];
         if (MsType.$in_palette[ms_type]) {
@@ -644,6 +649,8 @@ function clear_probability(div) {
     div.classList.remove('tile-pb-mine');
     div.classList.remove('tile-pb-clear');
     div.classList.remove('tile-pb-error');
+    div.classList.remove('tile-pb-color');
+    div.style.removeProperty('--tile-color');
     delete div.dataset.probability;
     delete div.dataset.error;
 }
@@ -730,7 +737,7 @@ class MFGList {
             global_mine_count -= is_mine_or_flag;
             mine_flag_count += is_mine_or_flag;
         });
-        if(global_mine_count<=0){
+        if (global_mine_count <= 0) {
             flash_message(FLASH_ERROR, `Error: Too many flags or mines have been placed! The global mine count (${global_mine_count + mine_flag_count}) is less than the mines + flags placed (${mine_flag_count}).`);
             return;
         }
@@ -764,17 +771,30 @@ class MFGList {
                 const x = mfg.x;
                 const y = mfg.y;
                 const div = grid_body.children[y * columns + x];
-                div.textContent = `\\( {\\small${pb}\\\%} \\)`;
-                renderMathInElement(div);
+                div.textContent = `\\( \\htmlStyle{font-size: 0.75em}{${pb}\\\%} \\)`;
+                renderMathInElement(div,{
+                    trust: true,
+                    strict: (code) => code === "htmlExtension" ? "ignore" : "warn",
+                });
                 if (a_numerator == a_denominator)
                     div.classList.add('tile-pb-mine');
                 else if (a_numerator == 0n)
                     div.classList.add('tile-pb-clear');
+                else {
+                    div.classList.add('tile-pb-color');
+                    const percentage = Number(a_numerator) / Number(a_denominator);
+                    let tc;
+                    if (percentage <= 0.5)
+                        tc = color_lerp(tile_colors.clear, tile_colors.neutral, percentage * 2);
+                    else
+                        tc = color_lerp(tile_colors.neutral, tile_colors.mine, percentage * 2 - 1);
+                    div.style.setProperty('--tile-color', tc);
+                }
                 div.dataset.probability = 'y';
             });
         });
         //Probability of an empty matrix (All unknowns) is just (number of mines)/(number of non-adjacent tiles)
-        if(this.global.length===0){
+        if (this.global.length === 0) {
             na_denominator = non_adjacent_tiles;
             na_numerator = global_mine_count;
         }
@@ -782,12 +802,25 @@ class MFGList {
         [...grid_body.children].forEach(div => { //Fill Non-adjacent unknown tiles with the same probability
             if (div.dataset.ms_type == MsType.unknown && div.dataset.probability === undefined) {
                 const pb = format_percentage(na_numerator, na_denominator);
-                div.textContent = `\\( {\\small${pb}\\\%} \\)`;
-                renderMathInElement(div);
+                div.textContent = `\\( \\htmlStyle{font-size: 0.75em}{${pb}\\\%} \\)`;
+                renderMathInElement(div,{
+                    trust: true,
+                    strict: (code) => code === "htmlExtension" ? "ignore" : "warn",
+                });
                 if (na_numerator == na_denominator)
                     div.classList.add('tile-pb-mine');
                 else if (na_numerator == 0n)
                     div.classList.add('tile-pb-clear');
+                else {
+                    div.classList.add('tile-pb-color');
+                    const percentage = Number(na_numerator) / Number(na_denominator);
+                    let tc;
+                    if (percentage <= 0.5)
+                        tc = color_lerp(tile_colors.clear, tile_colors.neutral, percentage * 2);
+                    else
+                        tc = color_lerp(tile_colors.neutral, tile_colors.mine, percentage * 2 - 1);
+                    div.style.setProperty('--tile-color', tc);
+                }
                 div.dataset.probability = 'y';
             }
         });
@@ -857,6 +890,16 @@ function parse_probability_list(c_arr_ptr) {
                             div.classList.add('tile-pb-mine');
                         else if (count == 0)
                             div.classList.add('tile-pb-clear');
+                        else {
+                            div.classList.add('tile-pb-color');
+                            const percentage = count / total_solutions;
+                            let tc;
+                            if (percentage <= 0.5)
+                                tc = color_lerp(tile_colors.clear, tile_colors.neutral, percentage * 2);
+                            else
+                                tc = color_lerp(tile_colors.neutral, tile_colors.mine, percentage * 2 - 1);
+                            div.style.setProperty('--tile-color', tc);
+                        }
                         div.dataset.probability = 'y';
                     }
                 }
@@ -962,4 +1005,24 @@ function create_board_pattern(div_parent, num_columns, tile_string) {
             console.error(`Character '${this_ch}' is not part of the tile set for string '${tile_string}' at index #${ch_i}`);
         }
     }
+}
+function color_lerp(color1, color2, percent) {
+    function parse_hex(color) {
+        const hex_map = new Map([
+            ['0', 0], ['1', 1], ['2', 2], ['3', 3],
+            ['4', 4], ['5', 5], ['6', 6], ['7', 7],
+            ['8', 8], ['9', 9], ['a', 10], ['b', 11],
+            ['c', 12], ['d', 13], ['e', 14], ['f', 15],
+        ]);
+        return color.match(/[a-f\d]{2}/gi).map(x => {
+            return parseInt(hex_map.get(x[0].toLowerCase()) * 16 + hex_map.get(x[1].toLowerCase()));
+        });
+    }
+    const [r1, g1, b1] = parse_hex(color1);
+    const [r2, g2, b2] = parse_hex(color2);
+    percent = Math.min(Math.max(percent, 0), 1);
+    const nr = Math.round(r1 + (r2 - r1) * percent);
+    const ng = Math.round(g1 + (g2 - g1) * percent);
+    const nb = Math.round(b1 + (b2 - b1) * percent);
+    return `rgb(${nr}, ${ng}, ${nb})`;
 }
