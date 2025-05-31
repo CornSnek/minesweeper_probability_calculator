@@ -954,7 +954,23 @@ function parse_probability_list(c_arr_ptr) {
                 }
             }
         }
-        if (select_probability.value === 'Global' && mfg_list.convolve_all()) mfg_list.gm_probability();
+        if(mfg_list.convolve_all()){
+            let total_num = 0n;
+            if(mfg_list.global.length!==0){
+                if(mfg_list.global.length!==1){
+                    AppendResults('Whole System<br>');
+                    const first_map=mfg_list.global[0];
+                    for(const [_,f] of first_map.map){
+                        total_num += f;
+                    }
+                    AppendResults(`Total valid solutions found for this system: ${total_num.toLocaleString()}<br>`);
+                    for(const [m,f] of first_map.map){
+                        AppendResults(`${f.toLocaleString()} solution(s) have ${m} total mines.<br>`);
+                    }
+                }
+            }
+            if(select_probability.value === 'Global') mfg_list.gm_probability();
+        }
     } else {
         flash_message(FLASH_ERROR, 'Encountered an error: \'' + CalculateStatus.$error_message[calc_arr_status]) + '\'';
     }

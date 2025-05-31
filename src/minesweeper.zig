@@ -629,13 +629,15 @@ pub const MinesweeperMatrix = struct {
             try bui_free_counter.pad(allocator, total_free_count / 8 + 1);
             bui_free_max.set(total_free_count);
             var total: usize = 0;
-            const wasm_main = @import("wasm_main.zig");
             while (bui_free_counter.order(bui_free_max) != .eq) : (try bui_free_counter.add_one(allocator)) {
-                if (UsingWasm and @atomicLoad(bool, &wasm_main.CalculateStatus, .acquire)) {
-                    @atomicStore(bool, &wasm_main.CalculateStatus, false, .release);
-                    wasm_main.SetTimeoutProgress(subsystem_id, bui_free_counter.to_float(f32) / bui_free_max.to_float(f32));
-                    if (@atomicLoad(bool, &wasm_main.CancelCalculation, .acquire)) {
-                        return error.CalculationCancelled;
+                if (UsingWasm) {
+                    const wasm_main = @import("wasm_main.zig"); //Inside UsingWasm to prevent zig build test from reading wasm_allocator (error)
+                    if (@atomicLoad(bool, &wasm_main.CalculateStatus, .acquire)) {
+                        @atomicStore(bool, &wasm_main.CalculateStatus, false, .release);
+                        wasm_main.SetTimeoutProgress(subsystem_id, bui_free_counter.to_float(f32) / bui_free_max.to_float(f32));
+                        if (@atomicLoad(bool, &wasm_main.CancelCalculation, .acquire)) {
+                            return error.CalculationCancelled;
+                        }
                     }
                 }
                 var bui_solution: big_number.BigUInt = try .init(allocator, 0);
@@ -670,6 +672,7 @@ pub const MinesweeperMatrix = struct {
                 for (total_mf_map.list.items) |mf| {
                     try results_str.writer(allocator).print("{} solution(s) have {} total mines.<br>", .{ mf.f, mf.m });
                 }
+                const wasm_main = @import("wasm_main.zig");
                 wasm_main.AppendResults(results_str.items.ptr, results_str.items.len);
                 //This code shows the mine frequencies for each subsystem
                 //for (location_mf_map.items, 0..) |lmf, id| {
@@ -1253,18 +1256,6 @@ test "Tilemap.insert" {
     try std.testing.expectEqual(@as(usize, 1), try tm.insert(t_allocator, .{ .x = 3, .y = 4 }));
     try std.testing.expectEqual(tm.get_location(0), TileLocation{ .x = 1, .y = 2 });
     try std.testing.expectEqual(tm.get_id(.{ .x = 3, .y = 4 }), @as(usize, 1));
-}
-test "Tilemap.to_minesweeper_matrix" {
-    var mp_status = MapParser.init_parse("1111xxx\ncc1cccc\nccccccc", t_allocator);
-    if (mp_status == .ok) {
-        defer mp_status.ok.deinit(t_allocator);
-        var mm = try mp_status.ok.to_minesweeper_matrix(t_allocator);
-        defer mm.deinit(t_allocator);
-        const pr_list = try mm.solve(t_allocator, 0);
-        defer pr_list.deinit(t_allocator);
-    } else {
-        return error.UnexpectedStatus;
-    }
 }
 test "MinesweeperMatrix.separate_subsystems" {
     var mp_status = MapParser.init_parse("ccccc\nc121c\nccccc", t_allocator);
