@@ -1,19 +1,10 @@
 const std = @import("std");
 ///Arbitrary big number in little-endian.
 pub const BigUInt = struct {
-    bytes: std.ArrayListUnmanaged(u8),
-    pub fn init(allocator: std.mem.Allocator, init_num: u8) !BigUInt {
-        var bytes: std.ArrayListUnmanaged(u8) = .empty;
+    bytes: std.ArrayListUnmanaged(u32),
+    pub fn init(allocator: std.mem.Allocator, init_num: u32) !BigUInt {
+        var bytes: std.ArrayListUnmanaged(u32) = .empty;
         try bytes.append(allocator, init_num);
-        return .{ .bytes = bytes };
-    }
-    pub fn init_int(allocator: std.mem.Allocator, init_num: anytype) !BigUInt {
-        const IntType = @typeInfo(@TypeOf(init_num));
-        if (IntType != .int) @compileError("init_num should be an integer");
-        var bytes: std.ArrayListUnmanaged(u8) = .empty;
-        const init_num_little = std.mem.nativeToLittle(@TypeOf(init_num), init_num);
-        try bytes.appendNTimes(allocator, undefined, IntType.int.bits / 8);
-        @memcpy(bytes.items, std.mem.asBytes(&init_num_little)[0 .. IntType.int.bits / 8]);
         return .{ .bytes = bytes };
     }
     pub fn clone(self: BigUInt, allocator: std.mem.Allocator) !BigUInt {
@@ -45,27 +36,15 @@ pub const BigUInt = struct {
         if (carry == 1)
             try self.bytes.append(allocator, 1);
     }
-    pub fn multiply_byte(self: *BigUInt, allocator: std.mem.Allocator, by: u8) !void {
-        var carry: u8 = 0;
+    pub fn multiply_byte(self: *BigUInt, allocator: std.mem.Allocator, by: u32) !void {
+        var carry: u32 = 0;
         for (0..self.bytes.items.len) |i| {
-            const product: u16 = @as(u16, @intCast(self.bytes.items[i])) * by + carry;
-            self.bytes.items[i] = @intCast(product & 0xFF);
-            carry = @intCast(product >> 8);
+            const product: u64 = @as(u64, @intCast(self.bytes.items[i])) * by + carry;
+            self.bytes.items[i] = @intCast(product & 0xFFFFFFFF);
+            carry = @intCast(product >> 32);
         }
         if (carry != 0)
             try self.bytes.append(allocator, carry);
-    }
-    ///Returns remainder, but null if by == 0
-    pub fn divide_byte(self: *BigUInt, by: u8) ?u8 {
-        if (by == 0) return null;
-        var remainder: u16 = 0;
-        const len = self.bytes.items.len;
-        for (0..len) |i| {
-            const acc: u16 = (remainder << 8) | self.bytes.items[len - 1 - i];
-            self.bytes.items[len - 1 - i] = @truncate(acc / by);
-            remainder = acc % by;
-        }
-        return @truncate(remainder);
     }
     ///Switch back and forth in adding/multiplying
     const MultiplyResult = union(enum) {
@@ -150,15 +129,15 @@ pub const BigUInt = struct {
         }
     }
     pub fn bit(self: BigUInt, offset: usize) bool {
-        return self.bytes.items[offset / 8] & (@as(u8, 1) << @as(u3, @intCast(offset % 8))) != 0;
+        return self.bytes.items[offset / 32] & (@as(u32, 1) << @as(u5, @intCast(offset % 32))) != 0;
     }
     pub fn set(self: BigUInt, offset: usize) void {
-        self.bytes.items[offset / 8] |= (@as(u8, 1) << @as(u3, @intCast(offset % 8)));
+        self.bytes.items[offset / 32] |= (@as(u32, 1) << @as(u5, @intCast(offset % 32)));
     }
     pub fn shift_bytes_left(self: *BigUInt, allocator: std.mem.Allocator, by: usize) !void {
         const old_len = self.bytes.items.len;
         try self.bytes.appendNTimes(allocator, undefined, by);
-        std.mem.copyBackwards(u8, self.bytes.items[by..], self.bytes.items[0..old_len]);
+        std.mem.copyBackwards(u32, self.bytes.items[by..], self.bytes.items[0..old_len]);
         @memset(self.bytes.items[0..by], 0);
     }
     pub fn format(self: BigUInt, comptime fmt: []const u8, options: std.fmt.FormatOptions, writer: anytype) !void {
@@ -177,8 +156,8 @@ pub const BigUInt = struct {
         } else if (other.bytes.items.len > self_len) {
             return std.math.Order.lt;
         }
-        var cmp_self_byte: u8 = 0;
-        var cmp_other_byte: u8 = 0;
+        var cmp_self_byte: u32 = 0;
+        var cmp_other_byte: u32 = 0;
         for (0..self_len) |i| {
             const rev_i = self_len - 1 - i;
             cmp_self_byte = self.bytes.items[rev_i];
@@ -193,43 +172,19 @@ pub const BigUInt = struct {
         var i = self.bytes.items.len;
         while (i != 0) { //Multiply each byte by 256 exponentially.
             i -= 1;
-            result = @mulAdd(f128, std.math.maxInt(u8) + 1, result, @floatFromInt(self.bytes.items[i]));
+            result = @mulAdd(f128, std.math.maxInt(u32) + 1, result, @floatFromInt(self.bytes.items[i]));
         }
         return @floatCast(result);
     }
-    const ArrayToU32 = extern union {
-        as_bytes: [4]u8,
-        as_u32: u32,
-    };
     pub fn pop_count(self: BigUInt) usize {
         var sum: usize = 0;
-        var i: usize = 0;
-        const len = self.bytes.items.len;
-        var atu32: ArrayToU32 = undefined;
-        //Population count that sums up each 4 bytes (u32), then the remainder bytes.
-        while (i + 4 <= len) {
-            @memcpy(&atu32.as_bytes, self.bytes.items[i .. i + 4]);
-            sum += @popCount(atu32.as_u32);
-            i += 4;
+        for (self.bytes.items) |b| {
+            sum += @popCount(b);
         }
-        if (i == len) return sum;
-        atu32.as_u32 = 0;
-        @memcpy((&atu32.as_bytes).ptr, self.bytes.items[i..len]);
-        sum += @popCount(atu32.as_u32);
         return sum;
     }
     pub fn is_zero(self: BigUInt) bool {
-        return std.mem.allEqual(u8, self.bytes.items, 0);
-    }
-    pub fn as_string(self: BigUInt, allocator: std.mem.Allocator) !std.ArrayListUnmanaged(u8) {
-        var digits: std.ArrayListUnmanaged(u8) = .empty;
-        errdefer digits.deinit(allocator);
-        var value = try self.clone(allocator);
-        defer value.deinit(allocator);
-        while (!value.is_zero()) : (value.trim())
-            try digits.append(allocator, value.divide_byte(10).? + '0');
-        std.mem.reverse(u8, digits.items);
-        return digits;
+        return std.mem.allEqual(u32, self.bytes.items, 0);
     }
     pub fn deinit(self: *BigUInt, allocator: std.mem.Allocator) void {
         self.bytes.deinit(allocator);
@@ -250,7 +205,4 @@ test "BigUInt" {
     defer bui2.deinit(t_allocator);
     try bui2.multiply_byte(t_allocator, 255);
     std.debug.print("{} {d} {}\n", .{ bui.order(bui2), bui.to_float(f64), bui.pop_count() });
-    var bui_str = try bui.as_string(t_allocator);
-    defer bui_str.deinit(t_allocator);
-    std.debug.print("{s}\n", .{bui_str.items});
 }

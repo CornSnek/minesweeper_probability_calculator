@@ -311,6 +311,7 @@ function hide_any_right_panels(e) {
 document.addEventListener('DOMContentLoaded', init);
 function init_grid(num_columns, num_rows) {
     console.assert(num_columns > 0 && num_rows > 0, 'num_columns and num_rows should be greater than 0');
+    deselect_tiles_f();
     rows = num_rows;
     columns = num_columns;
     WasmExports.CreateGrid(num_columns, num_rows);
@@ -440,13 +441,14 @@ class SelectedTile {
         }
     }
     get_div_array() {
-        console.assert(grid_body != null && columns != null, 'grid_body and columns must not be null');
         const array = [];
         switch (this.type) {
             case SelectedTile.One:
+                console.assert(grid_body != null && columns != null, 'grid_body and columns must not be null');
                 array.push(grid_body.children[this.select.y * columns + this.select.x]);
                 break;
             case SelectedTile.Many:
+                console.assert(grid_body != null && columns != null, 'grid_body and columns must not be null');
                 for (let j = this.select.p.y; j < this.select.p.y + this.select.s.y; j++) {
                     for (let i = this.select.p.x; i < this.select.p.x + this.select.s.x; i++) {
                         array.push(grid_body.children[j * columns + i]);
