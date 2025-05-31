@@ -22,4 +22,3 @@ Python 3 is also used to build the server to build and test the website: `zig bu
 
 ## TODO
 - Cleanup some pages, add anchor links + table of contents in the Minesweeper Patterns and Math Explanation page.
-- Instead of recalculating Local and Global of the same board (Since the information from the wasm module is the same) recalculate to the wasm module **only** if the board has changed. 

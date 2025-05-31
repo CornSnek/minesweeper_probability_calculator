@@ -272,6 +272,20 @@ pub const MapParser = struct {
         }
         return mm;
     }
+    pub fn as_str(self: MapParser, allocator: std.mem.Allocator) ![]u8 {
+        var str_list: std.ArrayListUnmanaged(u8) = .empty;
+        defer str_list.deinit(allocator);
+        const width = self.width;
+        var width_counter: usize = 0;
+        for (self.map.items) |mst| {
+            width_counter = (width_counter + 1) % width;
+            try str_list.append(allocator, mst.js_ch()[0]);
+            if (width_counter == 0) {
+                try str_list.append(allocator, '\n');
+            }
+        }
+        return try str_list.toOwnedSlice(allocator);
+    }
     pub fn deinit(self: *MapParser, allocator: std.mem.Allocator) void {
         self.map.deinit(allocator);
     }
@@ -1277,6 +1291,18 @@ test "MinesweeperMatrix.separate_subsystems" {
             defer solved.deinit(t_allocator);
             std.debug.print("{any}\n", .{solved});
         }
+    } else {
+        return error.UnexpectedStatus;
+    }
+}
+test "MapParser.as_str" {
+    const cmp_str = "012\n345\n678\ncvf\n";
+    var mp_status = MapParser.init_parse(cmp_str, t_allocator);
+    if (mp_status == .ok) {
+        defer mp_status.ok.deinit(t_allocator);
+        const output_str = try mp_status.ok.as_str(t_allocator);
+        defer t_allocator.free(output_str);
+        try std.testing.expectEqualStrings(cmp_str, output_str);
     } else {
         return error.UnexpectedStatus;
     }
