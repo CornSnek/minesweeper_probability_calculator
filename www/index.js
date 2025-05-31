@@ -13,7 +13,6 @@ let grid_body = null;
 let tiles_palette;
 let tile_description;
 let tile_gui;
-let size_image;
 let all_right_tabs;
 let columns_num;
 let rows_num;
@@ -27,9 +26,8 @@ let progress_div;
 let calculate_progress;
 let subsystem_progress;
 let flash_body;
-let flash_close;
 let flash_content;
-let get_gm_probability;
+let select_probability;
 let gm_count;
 let rows = null;
 let columns = null;
@@ -111,12 +109,10 @@ async function init() {
     subsystem_progress = document.getElementById('subsystem-progress');
     progress_div = document.getElementById('progress-div');
     flash_body = document.getElementById('flash-body');
-    flash_close = document.getElementById('flash-close');
     flash_content = document.getElementById('flash-content');
-    get_gm_probability = document.getElementById('get-gm-probability');
+    select_probability = document.getElementById('select-probability');
     gm_count = document.getElementById('gm-count');
     const root_comp = getComputedStyle(document.documentElement);
-    size_image = size_image = parseFloat(root_comp.getPropertyValue('--size-image').trim());
     tile_colors.neutral = root_comp.getPropertyValue('--ms-probability');
     tile_colors.mine = root_comp.getPropertyValue('--ms-probability-mine');
     tile_colors.clear = root_comp.getPropertyValue('--ms-probability-clear');
@@ -224,21 +220,32 @@ async function init() {
         worker_handler_module[e.data[0]](...e.data.slice(1));
     };
     calculate_worker.postMessage(['m', WasmMemory]);
-    document.querySelectorAll('#patterns-body .tile-template').forEach(div => {
+    document.querySelectorAll('#patterns-body .tile-template, #probability-body .tile-template').forEach(div => {
         create_board_pattern(div, div.dataset.ncolumns, div.dataset.str);
         div.onclick = e => {
-            const copy_data = SelectedTile.ClipboardHeader + div.dataset.str.replace(/[cv][.?]/g, 'c');
+            const copy_data = SelectedTile.ClipboardHeader + div.dataset.str.replace(/[cv]([.?]|\(.*?\))/g, 'c');
             navigator.clipboard.writeText(copy_data).catch(err => console.warn('Clipboard copy failed: ' + err));
-            flash_message(FLASH_SUCCESS, 'Copied to Clipboard');
+            flash_message(FLASH_SUCCESS, 'Copied to Clipboard', 3000);
         };
     });
-    flash_close.onclick = hide_flash;
+    flash_body.onclick = hide_flash;
+    select_probability.onchange = e => {
+        const prob_type = e.target.value;
+        gm_count.disabled = prob_type !== 'Global';
+        flash_message(FLASH_SUCCESS, (prob_type !== 'Global') ? 'Local shows only the probability for adjacent tiles' : 'Global shows the probability of the whole board, where Mine Count is considered', 5000);
+    };
+    gm_count.disabled = select_probability.value !== 'Global';
     console.log('Waiting for KaTeX module...');
     wait_katex();
 }
 const FLASH_ERROR = 0;
 const FLASH_SUCCESS = 1;
-function flash_message(type, message) {
+let last_flash_timer = null;
+function flash_message(type, message, hide_seconds) {
+    if (last_flash_timer !== null) {
+        clearTimeout(last_flash_timer);
+        last_flash_timer = null;
+    }
     flash_body.style.display = 'inline-flex';
     flash_content.textContent = message;
     if (type === FLASH_SUCCESS) {
@@ -249,6 +256,9 @@ function flash_message(type, message) {
         flash_body.classList.remove('flash-success');
     } else {
         console.err('Invalid flash_message type');
+    }
+    if (hide_seconds !== undefined) {
+        last_flash_timer = setTimeout(hide_flash, hide_seconds);
     }
 }
 function hide_flash() {
@@ -623,10 +633,11 @@ function update_tile_div(div, use_is_clicked) {
     const image_url = MsType.$image_url[ms_type];
     div.textContent = '';
     const img = document.createElement('img');
+    div.appendChild(img);
     img.src = 'images/' + image_url;
+    const size_image = parseInt(getComputedStyle(div).getPropertyValue('--size-image'));
     img.width = size_image;
     img.height = size_image;
-    div.appendChild(img);
 }
 function set_tile(x, y, ms_type) {
     WasmExports.SetTile(x, y, ms_type);
@@ -722,7 +733,8 @@ class MFGList {
         }
         return true;
     }
-    output_probability() {
+    //Global Mine Probability
+    gm_probability() {
         let gmfg = null;
         if (this.global.length !== 0) gmfg = this.global[0].map;
         let global_mine_count = parseInt(gm_count.value);
@@ -757,12 +769,12 @@ class MFGList {
                     continue;
                 }
                 a_denominator += gf * comb(non_adjacent_tiles, global_mine_count - gm);
-                na_numerator += comb(non_adjacent_tiles, global_mine_count - gm) * BigInt(global_mine_count - gm) / BigInt(non_adjacent_tiles);
+                na_numerator += comb(non_adjacent_tiles - 1, global_mine_count - gm - 1);
                 na_denominator += comb(non_adjacent_tiles, global_mine_count - gm);
                 max_gm = Math.max(max_gm, gm);
             }
             if (gmfg.size != 0 && gmfg.size == too_many_skip) {
-                flash_message(FLASH_ERROR, `Error: Too little mines! The global mine count is ${global_mine_count + mine_flag_count} - (${mine_flag_count} mines + flags) = ${global_mine_count}. All solutions require ${min_gm} or more mines.`);
+                flash_message(FLASH_ERROR, `Error: Too little mines! The global mine count is ${global_mine_count + mine_flag_count} - (${mine_flag_count} mines + flags) = ${global_mine_count}. All solutions require at least ${min_gm} or more mines.`);
                 return;
             }
             if (a_denominator === 0n) {
@@ -793,11 +805,9 @@ class MFGList {
                 else {
                     div.classList.add('tile-pb-color');
                     const percentage = Number(a_numerator) / Number(a_denominator);
-                    let tc;
-                    if (percentage <= 0.5)
-                        tc = color_lerp(tile_colors.clear, tile_colors.neutral, percentage * 2);
-                    else
-                        tc = color_lerp(tile_colors.neutral, tile_colors.mine, percentage * 2 - 1);
+                    let tc = (percentage <= 0.5)
+                        ? color_lerp(tile_colors.clear, tile_colors.neutral, percentage * 2)
+                        : color_lerp(tile_colors.neutral, tile_colors.mine, percentage * 2 - 1);
                     div.style.setProperty('--tile-color', tc);
                 }
                 div.dataset.probability = 'y';
@@ -828,11 +838,9 @@ class MFGList {
                 else {
                     div.classList.add('tile-pb-color');
                     const percentage = Number(na_numerator) / Number(na_denominator);
-                    let tc;
-                    if (percentage <= 0.5)
-                        tc = color_lerp(tile_colors.clear, tile_colors.neutral, percentage * 2);
-                    else
-                        tc = color_lerp(tile_colors.neutral, tile_colors.mine, percentage * 2 - 1);
+                    let tc = (percentage <= 0.5)
+                        ? color_lerp(tile_colors.clear, tile_colors.neutral, percentage * 2)
+                        : color_lerp(tile_colors.neutral, tile_colors.mine, percentage * 2 - 1);
                     div.style.setProperty('--tile-color', tc);
                 }
                 div.dataset.probability = 'y';
@@ -896,10 +904,15 @@ function parse_probability_list(c_arr_ptr) {
                         }
                     }
                     mfg_list.add_local(ca_i, mfg);
-                    if (!get_gm_probability.checked) {
+                    if (select_probability.value !== 'Global') {
                         const div = grid_body.children[y * columns + x];
-                        div.textContent = `\\( \\frac{${count}}{${total_solutions}} \\)`;
-                        renderMathInElement(div);
+                        div.textContent = select_probability.value === 'Local'
+                            ? `\\( \\frac{${count}}{${total_solutions}} \\)`
+                            : `\\( \\htmlStyle{font-size: 0.75em}{${format_percentage(count, total_solutions)}\\\%} \\)`;
+                        renderMathInElement(div, {
+                            trust: true,
+                            strict: (code) => code === "htmlExtension" ? "ignore" : "warn",
+                        });
                         if (count == total_solutions)
                             div.classList.add('tile-pb-mine');
                         else if (count == 0)
@@ -907,11 +920,9 @@ function parse_probability_list(c_arr_ptr) {
                         else {
                             div.classList.add('tile-pb-color');
                             const percentage = count / total_solutions;
-                            let tc;
-                            if (percentage <= 0.5)
-                                tc = color_lerp(tile_colors.clear, tile_colors.neutral, percentage * 2);
-                            else
-                                tc = color_lerp(tile_colors.neutral, tile_colors.mine, percentage * 2 - 1);
+                            let tc = (percentage <= 0.5)
+                                ? color_lerp(tile_colors.clear, tile_colors.neutral, percentage * 2)
+                                : color_lerp(tile_colors.neutral, tile_colors.mine, percentage * 2 - 1);
                             div.style.setProperty('--tile-color', tc);
                         }
                         div.dataset.probability = 'y';
@@ -943,7 +954,7 @@ function parse_probability_list(c_arr_ptr) {
                 }
             }
         }
-        if (get_gm_probability.checked && mfg_list.convolve_all()) mfg_list.output_probability();
+        if (select_probability.value === 'Global' && mfg_list.convolve_all()) mfg_list.gm_probability();
     } else {
         flash_message(FLASH_ERROR, 'Encountered an error: \'' + CalculateStatus.$error_message[calc_arr_status]) + '\'';
     }
@@ -1014,6 +1025,18 @@ function create_board_pattern(div_parent, num_columns, tile_string) {
                     console.error(`Character '${this_ch}' is only used for unknowns for string '${tile_string}' at index #${ch_i}`);
                 }
                 ch_i++;
+            } else if (next_ch == '(') {
+                if (tile_enum == MsType.unknown) {
+                    const end = tile_string.indexOf(')', ch_i + 1);
+                    if (end !== -1) {
+                        const text_slice=tile_string.slice(ch_i + 2, end);
+                        tile_div.textContent = `\\( ${text_slice} \\)`;
+                        renderMathInElement(tile_div);
+                    } else throw Error(`Missing ')'`);
+                    ch_i += end - ch_i;
+                } else {
+                    console.error(`Character '${this_ch}' and ) is only used for unknowns to inline text`);
+                }
             }
         } else if (this_ch != ',') {
             console.error(`Character '${this_ch}' is not part of the tile set for string '${tile_string}' at index #${ch_i}`);

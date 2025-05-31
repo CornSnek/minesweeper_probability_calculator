@@ -20,18 +20,19 @@
 </head>
 
 <body>
-  <div id="flash-body"><strong id="flash-close">X</strong><div id="flash-content"></div></div>
+  <div id="flash-body">
+    <div id="flash-content"></div>
+  </div>
   <div id="grid-body" class="no-highlight"></div>
   <div id="all-right-tabs" class="right-tabs-normal">
     <div class="tabs-button" data-tab="about-tab">
       About
     </div>
-    <div class="tabs-button">
-      <a href="https://github.com/CornSnek/minesweeper_probability_calculator" target="_blank"
-        rel="noopener noreferrer">GitHub Source</a>
-    </div>
     <div class="tabs-button" data-tab="patterns-tab">
       Minesweeper Patterns
+    </div>
+    <div class="tabs-button" data-tab="probability-tab">
+      Math Explanation
     </div>
     <div>
       <label for="columns-num">Columns</label>
@@ -45,10 +46,14 @@
       <label for="show-results-check>">Show Results When Done</label>
       <input type="checkbox" id="show-results-check">
       <br><br>
-      <label for="get-gm-probability">Use Global Mine Probability</label>
-      <input type="checkbox" id="get-gm-probability">
+      <label for="select-probability">Select Probability</label>
+      <select id="select-probability">
+        <option value="Local">Local</option>
+        <option value="LocalP">Local - Percentage</option>
+        <option value="Global">Global</option>
+      </select>
       <br>
-      <label for="gm-count">Count</label>
+      <label for="gm-count">Mine Count</label>
       <input id="gm-count" value="10" size="5">
     </div>
     <div id="calculate-probability" class="tabs-button">
@@ -66,6 +71,10 @@
     </div>
     <div id="clear-all-button" class="tabs-button">
       Clear All Tiles
+    </div>
+    <div class="tabs-button">
+      <a href="https://github.com/CornSnek/minesweeper_probability_calculator" target="_blank"
+        rel="noopener noreferrer">GitHub Source</a>
     </div>
   </div>
   <div id="all-options-gui">
@@ -88,11 +97,287 @@
         The probability fraction is calculated by summing Each 0 or 1 from each solution, divided by the number of total
         valid solutions.<br><br>
         See the Probability Results tab to see an example of the matrix calculations in action.<br><br>
-        You can also check probability with 'Use Global Mine Probability' with the number of mines. This will also consider
-        the non-adjacent tiles to calculate its probability as well.
       </div>
     </div>
-
+    <div id="probability-tab" class="options-gui panel-hide-right">
+      <div>
+        <a href="#" class="close-options-panel"><strong class="badge">Close</strong></a>
+      </div>
+      <div id="probability-body" style="--size-tile: 24px; --size-image: 16px;">
+        <div>
+          I have used the page <b>
+          <a href="https://www.lrvideckis.com/blog/2020/07/17/minesweeper_probability.html" target="_blank"
+          rel="noopener noreferrer">https://www.lrvideckis.com/blog/2020/07/17/minesweeper_probability.html</a></b> as research to help calculate and explain the probabilities.
+          <br>
+          <br>
+          There are two types of probability in this calculator: Local and Global.
+          <br>
+          Local calculates only the adjacent tiles near number tiles, and it does not consider any mines that would be in non-adjacent tiles.
+          <br>
+          Global calculates all unknown tiles. Most minesweeper games have a global mine count, and it not only influence the probability for non-adjacent tiles, but it also affects probability for adjacent tiles as well.
+          <br>
+          This page describes the formula used to calculate them.
+          <br>
+          <br>
+          To give an example on how to calculate them, consider this 5x5 board.
+          <div class="tile-template" data-ncolumns="5" data-str="ccccc,c111c,ccccc,ccccc,ccccc,"></div>
+          <br>
+          There are 14 possible solutions as shown below.
+          <br>
+          <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 1rem;">
+            <div class="tile-template" data-ncolumns="5" data-str="vccvc,c111c,ccccc,"></div>
+            <div class="tile-template" data-ncolumns="5" data-str="cccvc,v111c,ccccc,"></div>
+            <div class="tile-template" data-ncolumns="5" data-str="cccvc,c111c,vcccc,"></div>
+            <div class="tile-template" data-ncolumns="5" data-str="vcccc,c111c,cccvc,"></div>
+            <div class="tile-template" data-ncolumns="5" data-str="ccccc,v111c,cccvc,"></div>
+            <div class="tile-template" data-ncolumns="5" data-str="ccccc,c111c,vccvc,"></div>
+            <div class="tile-template" data-ncolumns="5" data-str="cvccv,c111c,ccccc,"></div>
+            <div class="tile-template" data-ncolumns="5" data-str="cvccc,c111v,ccccc,"></div>
+            <div class="tile-template" data-ncolumns="5" data-str="cvccc,c111c,ccccv,"></div>
+            <div class="tile-template" data-ncolumns="5" data-str="ccccv,c111c,cvccc,"></div>
+            <div class="tile-template" data-ncolumns="5" data-str="ccccc,c111v,cvccc,"></div>
+            <div class="tile-template" data-ncolumns="5" data-str="ccccc,c111c,cvccv,"></div>
+            <div class="tile-template" data-ncolumns="5" data-str="ccvcc,c111c,ccccc,"></div>
+            <div class="tile-template" data-ncolumns="5" data-str="ccccc,c111c,ccvcc,"></div>
+          </div>
+          <br>
+        </div>
+        <h3>Local Probability</h3>
+        <div>
+          To calculate the Local probability, simply count the number of mines per tile for each solution. Then divide by the number of solutions.
+          <br>
+          For the variables \( S \), a solution array of unknown tiles, in a solution array set \( SS \) s.t. \[ \forall i \in \{0, 1, \dots, n-1\},\quad S[i] \in \{0, 1\} \]
+          and a tile number \( T \) s.t. \[
+            T \in \{0, 1, \dots, |SS|-1\}
+          \]
+          Then the local probability is calculated as
+          \[
+            \text{LocalProbability}(T) = \frac{ \displaystyle \sum_{ S \in SS } S[T] }{ |SS| }
+          \]
+          For a calculation example, let's say the tile numbers are numbered from 0 to \( |S| \) as shown below.
+          <br>
+          Note that |S| is the same as the number of unknown adjacent tiles near number tiles only.
+          <div class="tile-template" data-ncolumns="5" data-str="c(0)c(1)c(2)c(3)c(4),c(5)111c(6),c(7)c(8)c(9)c(10)c(11),ccccc,ccccc"></div>
+          \[
+            \begin{aligned}
+            \text{LocalProbability}(0) &= \frac{ 2 }{ 14 }\\
+            \text{LocalProbability}(1) &= \frac{ 3 }{ 14 }\\
+            \text{LocalProbability}(2) &= \frac{ 1 }{ 14 }\\
+            \text{LocalProbability}(3) &= \frac{ 3 }{ 14 }\\
+            \text{LocalProbability}(4) &= \frac{ 2 }{ 14 }\\
+            \dots
+            \end{aligned}
+          \]
+          It should be noted that for any \( T \),
+            \[ \text{LocalProbability}(T) = 100\% \text{ (guaranteed mine)} \]
+            \[ \text{ only if } \displaystyle \sum_{ S \in SS } S[T] = |SS| \]
+            \[ \text{LocalProbability}(T) = 0\% \text{ (guaranteed safe)} \]
+            \[ \text{ only if } \displaystyle \sum_{ S \in SS } S[T] = 0 \]
+        </div>
+        <h3>Global Probability (Adjacent Tiles)</h3>
+        <div>
+          To calculate the global probability of adjacent, the global mine count as \( M_G \) is considered, including the number of mines for each solution array \( S \) in a solution set \( SS \).
+          <br>
+          Here are also other variables to define:
+          \[
+            \begin{array}{l}
+              U_A \text{ as number of all adjacent tiles},\\
+              \text{where }U_A=|S|,\\
+              U_{NA} \text{ as number of non-adjacent unknown tiles},
+            \end{array}
+          \]
+          <br>
+          Note that there are 12 solutions which have 2 mines, and 2 solutions which have 1 mine in the 5x5 1-1-1 board.
+          <br>
+          Let's describe a map function that maps each number of mines to its number of occurances.
+          \[
+            \begin{array}{l}
+              MF_t : \text{&#x2124;}_{\ge 0} \rightarrow \text{&#x2124;}_{\ge 0}\\
+              MF_t(m) = n,\\
+              m \text{ as number of mines},\\
+              n \text{ as number of occurances},\\
+              MF_t(m) = 
+                \begin{cases}
+                n_0 & \text{if } m = m_0 \\
+                n_1 & \text{if } m = m_1 \\
+                n_2 & \text{if } m = m_2 \\
+                \dots \\
+                0   & \text{otherwise}
+                \end{cases}
+            \end{array}
+          \]
+          Then mapping the solutions of mines to occurances to a function \( MF_G(m) \) is then
+          \[
+            MF_G(m) = 
+              \begin{cases}
+              2 & \text{if } m = 1 \\
+              12 & \text{if } m = 2 \\
+              0   & \text{otherwise}
+              \end{cases}
+          \]
+          Let's also describe a set \( S_M = \{ m_0, m_1, m_2, \dots \}\) for the set of the number of mines in the solution set.
+          \[ S_{M_G} = \{ 1,2 \} \]
+          <br>
+          The reason why the number of mines and the occurances are considered is because the leftover mines, e.g. \( M_G - m_n \),
+          are arranged in a combination of all non-adjacent tiles \( U_{NA} \). We'll use this number and the function \( MF_G \) to create the sample space for the formula for adjacent tiles, or \( \text{GlobalProbability}_A(T) \).
+          <br>
+          The formula to count all combinations above is \( \binom{U_{NA}}{M_G - m_n} \).
+          <br>
+          For example, there are 10 non-adjacent tiles from the 5x5 board below written as N.
+          <div class="tile-template" data-ncolumns="5" data-str="ccccc,c111c,ccccc,c(N)c(N)c(N)c(N)c(N),c(N)c(N)c(N)c(N)c(N)"></div>
+          Let's say we have a global mine count \( M_G = 4 \), and counting \( m = 2 \) from a solution. There would be \( M_G - m = 4 - 2 = 2\) mines left over.
+          The mine combinations would be shown as the following
+          <br>
+          <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 1rem;">
+            <div class="tile-template" data-ncolumns="5" data-str="vvccc,ccccc"></div>
+            <div class="tile-template" data-ncolumns="5" data-str="vcvcc,ccccc"></div>
+            <div class="tile-template" data-ncolumns="5" data-str="vccvc,ccccc"></div>
+            <div class="tile-template" data-ncolumns="5" data-str="vcccv,ccccc"></div>
+            <div class="tile-template" data-ncolumns="5" data-str="vcccc,vcccc"></div>
+            <div class="tile-template" data-ncolumns="5" data-str="vcccc,cvccc"></div>
+            <div class="tile-template" data-ncolumns="5" data-str="vcccc,ccvcc"></div>
+            <div class="tile-template" data-ncolumns="5" data-str="vcccc,cccvc"></div>
+            <div class="tile-template" data-ncolumns="5" data-str="vcccc,ccccv"></div>
+            <div class="tile-template" data-ncolumns="5" data-str="cvvcc,ccccc"></div>
+            <div class="tile-template" data-ncolumns="5" data-str="cvcvc,ccccc"></div>
+            <div class="tile-template" data-ncolumns="5" data-str="cvccv,ccccc"></div>
+          </div>
+          <br>
+          ...and so forth.
+          <br>
+          The number of combinations would be \[ \binom{U_{NA}}{M_G - m_n} = \binom{10}{4 - 2} = \binom{10}{2} = 45\]
+          <br>
+          The formula of the sample space, or denominator, for \( \text{GlobalProbability}_A(T) \) is 
+          \[
+            \displaystyle \sum_{ m \in S_{M_G} } MF_G(m) * \binom{U_{NA}}{M_G - m}
+          \]
+          This formula enumerates each number of occurances of each number of mines from the solution set, and multiplies the leftover mine combination \( \binom{U_{NA}}{M_G - m_n} \) as the "weighted sum" for each \( m \in S_{M_G} \).
+          <br>
+          To find the numerator for each adjacent tile, we use the same formula above to get the number of mines, the occurances, and the leftover mine combinations but counting only if \( S[T] = 1 \) as from the Local Probability.
+          <br>
+          For example, for tile 0,
+          \[
+            \begin{array}{l}
+            MF_0(m) = 
+              \begin{cases}
+              2 & \text{if } m = 2 \\
+              0   & \text{otherwise}
+              \end{cases}\\
+            \text{ and } S_{M_0} = \{ 2 \}
+            \end{array}
+          \]
+          This describes that only 2 solutions have this tile as a mine, and those solutions have 2 mines.
+          <br>
+          For tile 1,
+          \[
+            \begin{array}{l}
+            MF_1(m) = 
+              \begin{cases}
+              3 & \text{if } m = 2 \\
+              0   & \text{otherwise}
+              \end{cases}\\
+            \text{ and } S_{M_1} = \{ 2 \}
+            \end{array}
+          \]
+          This describes that only 3 solutions have this tile as a mine, and those solutions have 2 mines.
+          <br>
+          For tile 2,
+          \[
+            \begin{array}{l}
+            MF_2(m) = 
+              \begin{cases}
+              1 & \text{if } m = 1 \\
+              0   & \text{otherwise}
+              \end{cases}\\
+            \text{ and } S_{M_2} = \{ 1 \}
+            \end{array}
+          \]
+          This describes that only 1 solution has this tile as a mine, and that solution only has 1 mine.
+          <br>
+          ...and so forth.
+          <br>
+          It should be noted that \( \forall S_{M_n}, S_{M_n} \sub S_{M_G} \), meaning that tiles may or may not contain all number of mines from \( S_{M_G} \).
+          <br>
+          The whole formula to get the global probability for adjacent tiles is.
+          \[
+            \text{GlobalProbability}_A(T) = 
+            \frac{
+              \displaystyle \sum_{ m_T \in S_{M_T} } MF_G(m_T) * \binom{U_{NA}}{M_G - m_T}
+            }{
+              \displaystyle \sum_{ m \in S_{M_G} } MF_G(m) * \binom{U_{NA}}{M_G - m}
+            }
+          \]
+          It should be noted that for guaranteed safe and mine tiles,
+          \[
+            \begin{array}{l}
+              \text{If } M_T = \empty,\\
+              \text{then } \text{GlobalProbability}_A(T) = 0
+            \end{array}
+          \]
+          \[
+            \begin{array}{l}
+            \text{If } MF_T(m) = MF_G(m) \text{ } \forall m,\\
+            \text{then } \text{GlobalProbability}_A(T) = 1
+            \end{array}
+          \]
+        </div>
+        <h3>Global Probability (Non-Adjacent Tiles)</h3>
+        <div>
+          The number of combinations of leftover mines is used for the global probability of non-adjacent tiles. It is also the denominator or sample space, described as
+          \[
+            \displaystyle \sum_{ m \in S_{M_G} } \binom{U_{NA}}{M_G - m}
+          \]
+          To check the number of combinations for a tile that has a mine, let's check some mine combinations again for \( m = 2 \) and \( M_G = 4 \), but only considering the top-left tile (marked as a flag).
+          <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 1rem;">
+            <div class="tile-template" data-ncolumns="5" data-str="fvccc,ccccc"></div>
+            <div class="tile-template" data-ncolumns="5" data-str="fcvcc,ccccc"></div>
+            <div class="tile-template" data-ncolumns="5" data-str="fccvc,ccccc"></div>
+            <div class="tile-template" data-ncolumns="5" data-str="fcccv,ccccc"></div>
+            <div class="tile-template" data-ncolumns="5" data-str="fcccc,vcccc"></div>
+            <div class="tile-template" data-ncolumns="5" data-str="fcccc,cvccc"></div>
+            <div class="tile-template" data-ncolumns="5" data-str="fcccc,ccvcc"></div>
+            <div class="tile-template" data-ncolumns="5" data-str="fcccc,cccvc"></div>
+            <div class="tile-template" data-ncolumns="5" data-str="fcccc,ccccv"></div>
+            <div class="tile-template" data-ncolumns="5" data-str="cvvcc,ccccc"></div>
+            <div class="tile-template" data-ncolumns="5" data-str="cvcvc,ccccc"></div>
+            <div class="tile-template" data-ncolumns="5" data-str="cvccv,ccccc"></div>
+          </div>
+          It seems that there are 9 combinations out of \( \binom{10}{2} = 45 \) that is a mine while the rest is not a mine.
+          <br>
+          To get this number 9, or getting a formula for counting combinations of any non-adjacent tile that have a mine for \( \binom{U_{NA}}{M_G - m} \) combinations,
+          we can fix one specific tile we are choosing, and find the number of combinations of all non-adjacent tiles - 1 with leftover \( M_G - m \) - 1 mines, or \( \binom{U_{NA} - 1}{M_G - m - 1} \).
+          It shows that \( \binom{9}{1} = 9 \).
+          <br>
+          <br>
+          Let's also check \( m = 1 \). Using the formula, there are  \( \binom{U_{NA}}{M_G - m} = \binom{10}{3} = 120 \text{ combinations}\) and \( \binom{U_{NA} - 1}{M_G - m - 1} = \binom{9}{2} = 36 \text{ combinations that have a mine in any tile.}\)
+          <br>
+          The global probability for non-adjacent tiles is the following.
+          \[
+            \text{GlobalProbability}_{NA} = 
+            \frac{
+              \displaystyle \sum_{ m \in S_{M_G} } \binom{U_{NA} - 1}{M_G - m - 1}
+            }{
+              \displaystyle \sum_{ m \in S_{M_G} } \binom{U_{NA}}{M_G - m}
+            }
+          \]
+        </div>
+      </div>
+      <h3>Global Probability (Adjacent Tiles), where only some solutions are valid</h3>
+      <div>
+        What happens if the global mine count \( M_G \) is just 1? This means that there can only be 2 solutions that are valid that have 1 mine, and the 12 solutions that are 2 mines are simply discarded.
+        So the formula can be changed depending on the global mine count, and thus \( \text{GlobalProbability}_A(T) \) can be rewritten as the following.
+        \[ 
+          \frac{
+            \displaystyle \sum_{ m_T \in S_{M_T} | m_T \le M_G } MF_G(m_T) * \binom{U_{NA}}{M_G - m_T}
+          }{
+            \displaystyle \sum_{ m \in S_{M_G} | m \le M_G } MF_G(m) * \binom{U_{NA}}{M_G - m}
+          }
+        \]
+        Note, that if the global mine count is less than all known solution mine numbers, then the program will throw an error of 'Too little mines!'.
+        <br>
+        Moreover, if \( M_G \gt max(S_{M_G}) + U_{NA} \), the program will throw an error of 'Too Many Mines!', since the maximum number of mines in a solution set + non-adjacent tiles is the limit that would fill the board with mines.
+      </div>
+    </div>
     <div id="patterns-tab" class="options-gui panel-hide-right">
       <div>
         <a href="#" class="close-options-panel"><strong class="badge">Close</strong></a>
@@ -103,14 +388,20 @@
         patterns.
         <br>
         <br>
-        A pattern, in the context of this calculator, is where all valid solutions for certain adjacent tiles are either guaranteed safe or
-        a mine. You can click each board for each pattern below to copy the data to the clipboard and paste to the main board to see the probability calculations.
+        A pattern, in the context of this calculator, is where all valid solutions for certain adjacent tiles are either
+        guaranteed safe or
+        a mine. You can click each board for each pattern below to copy the data to the clipboard and paste to the main
+        board to see the probability calculations.
         <br>
         <br>
-        Note: These aren't official names for these patterns. For more information and the logic on these patterns, see <b><a href="https://minesweeper.online/help/patterns" target="_blank"
-        rel="noopener noreferrer">https://minesweeper.online/help/patterns</a></b>, <b><a href="https://computronium.org/minesweeper/index.html" target="_blank"
-        rel="noopener noreferrer">https://computronium.org/minesweeper/index.html</a></b>, and <b><a href="https://www.youtube.com/@minesweeperstrategy7245" target="_blank" rel="noopener noreferrer">https://www.youtube.com/@minesweeperstrategy7245</a></a></b>
-        <ul id="patterns-list">
+        Note: These aren't official names for these patterns. For more information and the logic on these patterns, see
+        <b><a href="https://minesweeper.online/help/patterns" target="_blank"
+            rel="noopener noreferrer">https://minesweeper.online/help/patterns</a></b>, <b><a
+            href="https://computronium.org/minesweeper/index.html" target="_blank"
+            rel="noopener noreferrer">https://computronium.org/minesweeper/index.html</a></b>, and <b><a
+            href="https://www.youtube.com/@minesweeperstrategy7245" target="_blank"
+            rel="noopener noreferrer">https://www.youtube.com/@minesweeperstrategy7245</a></a></b>
+        <ul id="patterns-list" style="--size-tile: 24px; --size-image: 16px;">
           <li>
             <b>Number of Empty Spaces = Number of Mines</b>
             <div>
@@ -118,7 +409,8 @@
               filled as safe, the bottom right tile must be a mine.
               <div class="tile-template" data-ncolumns="5" data-str="ccccc,cxxxc,cx1xc,cxxv.c,ccccc,"></div>
               <br>
-              Because the 2 is near a wall and 3 adjacent tiles around the 2 are safe, the unknown tiles next to the 2 must be mines.
+              Because the 2 is near a wall and 3 adjacent tiles around the 2 are safe, the unknown tiles next to the 2
+              must be mines.
               <div class="tile-template" data-ncolumns="4" data-str="x2v.c,xxv.c,cccc,"></div>
               <br>
               Here is an example of a 1-2-3-2-1 wall, where the 3 tiles near the red 3 are mines due to this pattern.
@@ -129,11 +421,13 @@
             <b>Flag Number Reduction</b>
             <div>
               Whenever you see flags/mines near number tiles, subtract the number by the number of adjacent flag tiles.
-              Here is an example including the <b>Number of Empty Spaces = Number of Mines</b> pattern. The 3 becomes a 2,
+              Here is an example including the <b>Number of Empty Spaces = Number of Mines</b> pattern. The 3 becomes a
+              2,
               and the 2 unknown tiles above must be mines.
               <div class="tile-template" data-ncolumns="5" data-str="cxv.v.c,cx3xc,cx1fc,xx1xx,"></div>
               <br>
-              Reducing numbers is then combined with other patterns. For example, here a wall of 3-3-2 is a disguised <b>1-2-1</b> pattern. The tiles above the 1s must be mines.
+              Reducing numbers is then combined with other patterns. For example, here a wall of 3-3-2 is a disguised
+              <b>1-2-1</b> pattern. The tiles above the 1s must be mines.
               <div class="tile-template" data-ncolumns="6" data-str="c.v.c.v.c.c.,f3322x,f21f10,111110,000000,"></div>
             </div>
           </li>
@@ -141,10 +435,12 @@
             <b>Adjacent Tiles Near 0</b>
             <div>
               All the tiles near 0 must be safe. Generally in Minesweeper and its game clones, they automatically click
-              all 0 tiles and the safe adjacent tiles near the 0s. You generally do not have to manually click 0s as safe.
+              all 0 tiles and the safe adjacent tiles near the 0s. You generally do not have to manually click 0s as
+              safe.
               <div class="tile-template" data-ncolumns="5" data-str="ccccc,cc.c.c.c,cc.0c.c,cc.c.c.c,ccccc,"></div>
               <br>
-              However, when using the <b>Flag Number Reduction</b> pattern, if all flags were placed on a number tile, the rest
+              However, when using the <b>Flag Number Reduction</b> pattern, if all flags were placed on a number tile,
+              the rest
               of the tiles near the number must be safe.
               <br>For example, the 3s and the 1s shown both become 0, making all adjacent tiles safe.
               <div class="tile-template" data-ncolumns="5" data-str="ccccc,xffc.c,x33c.c,x1fc.c,x1c.cc,"></div>
@@ -153,11 +449,15 @@
           <li>
             <b>1-1</b>
             <div>
-              If a 1-1 pattern is near a wall, or has a tile blocking one side of the 1-1, the corner near the 1-1 is safe.
-              <div class="tile-template" data-ncolumns="7" data-str="xxc.cccc,x1ccccc,x1ccccc,xxxcc.xx,xxccc1x,xxccc1x,"></div>
+              If a 1-1 pattern is near a wall, or has a tile blocking one side of the 1-1, the corner near the 1-1 is
+              safe.
+              <div class="tile-template" data-ncolumns="7"
+                data-str="xxc.cccc,x1ccccc,x1ccccc,xxxcc.xx,xxccc1x,xxccc1x,"></div>
               <br>
-              Here is an example of a chain of successive 1-1 due to being near a wall and the tile is blocked at the same time.
-              <div class="tile-template" data-ncolumns="13" data-str="xxxxxxxxxxxxc,11111111111xc,ccc.ccc.ccc.ccc.c,ccccccccccccc,"></div>
+              Here is an example of a chain of successive 1-1 due to being near a wall and the tile is blocked at the
+              same time.
+              <div class="tile-template" data-ncolumns="13"
+                data-str="xxxxxxxxxxxxc,11111111111xc,ccc.ccc.ccc.ccc.c,ccccccccccccc,"></div>
               <br>
               A 1-1 can also allow more than one tile to be guaranteed as safe.
               <div class="tile-template" data-ncolumns="5" data-str="ccccc,cc.c.c.c,cx1cc,cx1cc,cxxxc,ccccc,"></div>
@@ -166,49 +466,59 @@
           <li>
             <b>1-2</b>
             <div>
-              A corner near the 2 is guaranteed a mine, and adjacent tiles of the 1 not adjacent of the 2 is guaranteed safe.
+              A corner near the 2 is guaranteed a mine, and adjacent tiles of the 1 not adjacent of the 2 is guaranteed
+              safe.
               <div class="tile-template" data-ncolumns="10" data-str="cc.ccv.cc.ccv.,cx12xcc.12x,cxxxxcc.xxx,"></div>
             </div>
           </li>
           <li>
             <b>1-2-1</b>
             <div>
-              This pattern is an extension of the <b>1-2</b> pattern, where the mines are always on the sides of the 1s and are touching the corner of the 2.
+              This pattern is an extension of the <b>1-2</b> pattern, where the mines are always on the sides of the 1s
+              and are touching the corner of the 2.
               <div class="tile-template" data-ncolumns="5" data-str="c.v.c.v.c.,c.121c.,c.xxxc.,cxxxc,"></div>
             </div>
           </li>
           <li>
             <b>1-2-2-1</b>
             <div>
-              This pattern is an extension of the <b>1-2</b> pattern, where the mines are always on the sides of the 2s and are touching the corner of the 1s.
+              This pattern is an extension of the <b>1-2</b> pattern, where the mines are always on the sides of the 2s
+              and are touching the corner of the 1s.
               <div class="tile-template" data-ncolumns="6" data-str="c.c.v.v.c.c.,c.1221c.,c.x00xc.,cxxxxc,"></div>
               <br>
-              Here is an example of a disguised 1-2-2-1 with the Flag Number Reduction pattern. The 1-2-3-3 column with the flags become a 1-2-2-1. Note: The mines could be in either side, but all the sides not near the 2s on the left/right are safe.
+              Here is an example of a disguised 1-2-2-1 with the Flag Number Reduction pattern. The 1-2-3-3 column with
+              the flags become a 1-2-2-1. Note: The mines could be in either side, but all the sides not near the 2s on
+              the left/right are safe.
               <div class="tile-template" data-ncolumns="3" data-str="c.c.c.,c.1c.,c2c,c3c,f3c.,fc.c.,"></div>
             </div>
           </li>
           <li>
             <b>1-3-1 Corner</b>
             <div>
-              This pattern has a mine on the outer corner of the 3, and safe tiles on the corner of the 1s not touching the 3.
+              This pattern has a mine on the outer corner of the 3, and safe tiles on the corner of the 1s not touching
+              the 3.
               <div class="tile-template" data-ncolumns="4" data-str="c.ccv.,x13c,xx1c,xxxc.,"></div>
             </div>
           </li>
           <li>
             <b>2-2-2 Corner</b>
             <div>
-              This pattern does the inverse of the <b>1-3-1 Corner</b> pattern, where safe tiles are mines, and the mine tile is safe.
+              This pattern does the inverse of the <b>1-3-1 Corner</b> pattern, where safe tiles are mines, and the mine
+              tile is safe.
               <div class="tile-template" data-ncolumns="4" data-str="v.ccc.,x22c,xx2c,cxxv.,"></div>
             </div>
           </li>
           <li>
             <b>2D 1-1, 2-2, 3-3</b>
             <div>
-              For this pattern, generally if the number is the same as the left (1, 2, or 3), then the 3 tiles on the right must be safe.
-              <div class="tile-template" data-ncolumns="14" data-str="xccc.cxccc.cxv.v.c.,x11c.cx22c.cx33c.,xxcc.cxxcc.cxxv.c.,xxcccxxcccxxcc,"></div>
+              For this pattern, generally if the number is the same as the left (1, 2, or 3), then the 3 tiles on the
+              right must be safe.
+              <div class="tile-template" data-ncolumns="14"
+                data-str="xccc.cxccc.cxv.v.c.,x11c.cx22c.cx33c.,xxcc.cxxcc.cxxv.c.,xxcccxxcccxxcc,"></div>
               <br>
               Note that the bottom X on the leftmost tile is not required for the right 3 tiles to be safe.
-              <div class="tile-template" data-ncolumns="14" data-str="xccc.cxccc.cxccc.,x11c.cx22c.cx33c.,xccc.cxccc.cxccc.,"></div>
+              <div class="tile-template" data-ncolumns="14"
+                data-str="xccc.cxccc.cxccc.,x11c.cx22c.cx33c.,xccc.cxccc.cxccc.,"></div>
             </div>
           </li>
           <li>
@@ -216,25 +526,32 @@
             <div>
               More special case patterns can be found for these 2D 1-1, 2-2, and 3-3.
               <br>
-              For the 2D 1-1 and 2-2, when clicking the 3 safe tiles, if the middle is also a 1 or 2 respectively, then the next 3 tiles on the right are also safe too. Please note the additional safe X tiles above the top and bottom of the leftmost 1 of 2 in order to do this.
-              <div class="tile-template" data-ncolumns="11" data-str="xxcxc.cxxv.xc.,x111c.cx222c.,xxcxc.cxxv.xc.,xxccccxxccc,"></div>
+              For the 2D 1-1 and 2-2, when clicking the 3 safe tiles, if the middle is also a 1 or 2 respectively, then
+              the next 3 tiles on the right are also safe too. Please note the additional safe X tiles above the top and
+              bottom of the leftmost 1 of 2 in order to do this.
+              <div class="tile-template" data-ncolumns="11"
+                data-str="xxcxc.cxxv.xc.,x111c.cx222c.,xxcxc.cxxv.xc.,xxccccxxccc,"></div>
               <br>
-              Here is a special case 2D 1-1, where the bottommost 1 tile (Of the 3 safe tiles) matches the 1 tile on the left. This makes the 4 adjacent tiles on the bottom and right safe.
+              Here is a special case 2D 1-1, where the bottommost 1 tile (Of the 3 safe tiles) matches the 1 tile on the
+              left. This makes the 4 adjacent tiles on the bottom and right safe.
               <br>
               Note: The 2D 1-1 can also be 2D 2-2 and 3-3 as well.
               <div class="tile-template" data-ncolumns="5" data-str="xccxc,x11xc.,x1c1c.,x1cc.c.,"></div>
               <br>
-              Here is another special case of a 2D 3-3, where the bottommost 2 tile (Of the 3 safe tiles) matches the 2 tile on the left. This makes the 4 adjacent tiles on the bottom and right safe.
+              Here is another special case of a 2D 3-3, where the bottommost 2 tile (Of the 3 safe tiles) matches the 2
+              tile on the left. This makes the 4 adjacent tiles on the bottom and right safe.
               Additionally, the tiles between the 2s are mines.
               <br>
               Note: The 2D 3-3 can also be 2D 1-1 and 2-2 as well.
-              <div class="tile-template" data-ncolumns="5" data-str="xv.v.xc,x33xc.,x2v.2c.,xxv.c.c.,xxccc,xxccc,"></div>
+              <div class="tile-template" data-ncolumns="5" data-str="xv.v.xc,x33xc.,x2v.2c.,xxv.c.c.,xxccc,xxccc,">
+              </div>
             </div>
           </li>
           <li>
             <b>1-3 and 1-4</b>
             <div>
-              These are similar to the <b>1-2 Pattern</b>, where the tiles left of the 1 must be safe, and the other tiles on the right must be mines.
+              These are similar to the <b>1-2 Pattern</b>, where the tiles left of the 1 must be safe, and the other
+              tiles on the right must be mines.
               <br>
               <br>
               Example of 1-3:
@@ -247,23 +564,31 @@
           <li>
             <b>2D 1-4, 2-5, 3-6, and 4-7</b>
             <div>
-              These patterns show that the tiles are safe on the top 3 adjacent tiles, but there are mines on the bottom 3 adjacent tiles. There is an exception of the 4-7 with additional guaranteed mines.
-              <div class="tile-template" data-ncolumns="12" data-str="c.c.c.c.c.c.c.c.c.c.c.c.,c1cc2cc3cv.4v.,c4cc5cc6cv.7v.,v.v.v.v.v.v.v.v.v.v.v.v.,"></div>
+              These patterns show that the tiles are safe on the top 3 adjacent tiles, but there are mines on the bottom
+              3 adjacent tiles. There is an exception of the 4-7 with additional guaranteed mines.
+              <div class="tile-template" data-ncolumns="12"
+                data-str="c.c.c.c.c.c.c.c.c.c.c.c.,c1cc2cc3cv.4v.,c4cc5cc6cv.7v.,v.v.v.v.v.v.v.v.v.v.v.v.,"></div>
             </div>
           </li>
           <li>
             <b>2D 1-2-1, 1-3-2, and 2-4-2</b>
             <div>
-              These patterns show 8 tiles that are on the left, the right, and the middle. The exceptions are that the 1-3-2 have mines on top and bottom of the 2, and the 2-4-2 have mines on the corner of the 4s.
+              These patterns show 8 tiles that are on the left, the right, and the middle. The exceptions are that the
+              1-3-2 have mines on top and bottom of the 2, and the 2-4-2 have mines on the corner of the 4s.
               <br>
-              Basically, a 2-4-2 is a <b>1-2-1</b> pattern with mines on all sides except on top and bottom of 4, and left and right of the 2s.
-              <div class="tile-template" data-ncolumns="10" data-str="c.cc.cc.c.cc.v.c.,c.121c.c.132c.,c.cc.cc.c.cc.v.c.,c.v.c.v.c.ccccc,c.242c.ccccc,c.v.c.v.c.ccccc"></div>
+              Basically, a 2-4-2 is a <b>1-2-1</b> pattern with mines on all sides except on top and bottom of 4, and
+              left and right of the 2s.
+              <div class="tile-template" data-ncolumns="10"
+                data-str="c.cc.cc.c.cc.v.c.,c.121c.c.132c.,c.cc.cc.c.cc.v.c.,c.v.c.v.c.ccccc,c.242c.ccccc,c.v.c.v.c.ccccc">
+              </div>
             </div>
           </li>
           <li>
             <b>1-1-1 and 1-1-1-1</b>
             <div>
-              Using the <b>Flag Number Reduction</b> pattern, these patterns are disguised, but behave similarly to the <b>1-2-1</b> and <b>1-2-2-1</b> pattern. However, the mine and safe tiles for 1-2-1 and 1-2-2-1 are inversed for 1-1-1 and 1-1-1-1.
+              Using the <b>Flag Number Reduction</b> pattern, these patterns are disguised, but behave similarly to the
+              <b>1-2-1</b> and <b>1-2-2-1</b> pattern. However, the mine and safe tiles for 1-2-1 and 1-2-2-1 are
+              inversed for 1-1-1 and 1-1-1-1.
               <br>
               Here is an example of a disguised 1-1-1
               <div class="tile-template" data-ncolumns="3" data-str="xfx,c.2x,v.1x,c.4x,fff,"></div>
@@ -275,13 +600,19 @@
           <li>
             <b>Shared Mines in Regions</b>
             <div>
-              For a region of tiles, if you know that mines can be shared for 2 different number tiles, you can use this information to do the <b>Flag Number Reduction</b> pattern to use with other patterns.
+              For a region of tiles, if you know that mines can be shared for 2 different number tiles, you can use this
+              information to do the <b>Flag Number Reduction</b> pattern to use with other patterns.
               <br>
               <br>
-              For a simple example, the rightmost 2 tile must share at least 2 mines in the ? regions with the leftmost 2 tile. Therefore, the leftmost 2 becomes a 0, thus the other adjacent tiles for the leftmost tile must be free due to the <b>Adjacent Tiles Near 0</b> pattern.
+              For a simple example, the rightmost 2 tile must share at least 2 mines in the ? regions with the leftmost
+              2 tile. Therefore, the leftmost 2 becomes a 0, thus the other adjacent tiles for the leftmost tile must be
+              free due to the <b>Adjacent Tiles Near 0</b> pattern.
               <div class="tile-template" data-ncolumns="5" data-str="xxxxx,xxc?xx,c.2c?2x,c.c.c?xx,"></div>
               <br>
-              Here is another example that uses another pattern. For the 2 bottom tile numbers, 1 mine must be in one of the 2 tiles while the other is safe.<br>Moreover, the 2 number tile on top of the region shares the mine. This makes the 2 tile be a 1 tile.<br>Due to these circumstances, this creates a <b>2D 1-1</b> pattern, allowing the top tiles on the topmost 1 tile to be safe. 
+              Here is another example that uses another pattern. For the 2 bottom tile numbers, 1 mine must be in one of
+              the 2 tiles while the other is safe.<br>Moreover, the 2 number tile on top of the region shares the mine.
+              This makes the 2 tile be a 1 tile.<br>Due to these circumstances, this creates a <b>2D 1-1</b> pattern,
+              allowing the top tiles on the topmost 1 tile to be safe.
               <div class="tile-template" data-ncolumns="5" data-str="ccc.c.c.,ccc1x,ccc2x,cxc?c?x,xf21x,xxxxx,"></div>
             </div>
           </li>

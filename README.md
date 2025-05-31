@@ -6,7 +6,7 @@ The web application is deployed at https://cornsnek.github.io/minesweeper_probab
 
 ## About
 I started to play Minesweeper, and I was interested in how Minesweeper Patterns are calculated as a safe number or a mine tile.
-This app was created in order to calculate the mine probabilities.
+This app was created in order to calculate the mine probabilities and understand the mathematics in calculating them.
 
 ## Zig Build
 This project currently uses Zig 0.14.0 to build the project.
@@ -21,4 +21,5 @@ Python 3 is also used to build the server to build and test the website: `zig bu
 
 
 ## TODO
-- Add a page that describes the Global Mine Probability calculation
+- Cleanup some pages, add anchor links + table of contents in the Minesweeper Patterns and Math Explanation page.
+- Instead of recalculating Local and Global of the same board (Since the information from the wasm module is the same) recalculate to the wasm module **only** if the board has changed. 
