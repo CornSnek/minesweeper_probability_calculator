@@ -184,8 +184,11 @@ async function init() {
         }
     });
     rows_num.onchange = e => rows_num.value = Math.min(Math.max(parseInt(rows_num.value), 1), 100);
+    rows_num.onclick = deselect_tiles_f;
     columns_num.onchange = e => columns_num.value = Math.min(Math.max(parseInt(columns_num.value), 1), 100);
+    columns_num.onclick = deselect_tiles_f;
     gm_count.onchange = e => gm_count.value = Math.max(parseInt(gm_count.value), 0);
+    gm_count.onclick = deselect_tiles_f;
     generate_grid.onclick = e => {
         if (is_calculating) return;
         if (confirm('Are you sure? This will clear all tiles.')) {
