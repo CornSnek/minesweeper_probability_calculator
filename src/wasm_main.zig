@@ -277,8 +277,20 @@ export fn CalculateProbability() [*c]shared.CalculateArray {
     @atomicStore(bool, &CancelCalculation, false, .release);
     wasm_print.FlushPrint(false);
     FinalizeResults();
-    if (last_calculate_str) |lcstr| wasm_allocator.free(lcstr);
-    last_calculate_str = wasm_allocator.dupe(u8, cmp_calculate_str) catch null;
+    if (calculate_array.status == .ok) { //Set null if not .ok for any status
+        for (calculate_array.ptr[0..calculate_array.len]) |ca| {
+            if (ca.status != .ok) {
+                if (last_calculate_str) |lcstr| wasm_allocator.free(lcstr);
+                last_calculate_str = null;
+            }
+        } else {
+            if (last_calculate_str) |lcstr| wasm_allocator.free(lcstr);
+            last_calculate_str = wasm_allocator.dupe(u8, cmp_calculate_str) catch null;
+        }
+    } else {
+        if (last_calculate_str) |lcstr| wasm_allocator.free(lcstr);
+        last_calculate_str = null;
+    }
     return &calculate_array;
 }
 pub extern fn ClearResults() void;

@@ -36,10 +36,10 @@
     </div>
     <div>
       <label for="columns-num">Columns</label>
-      <input id="columns-num" value="10" size="3">
+      <input id="columns-num" type="number" value="10" step="1" min="1" max="100" size="3">
       <br>
       <label for="rows-num">Rows</label>
-      <input id="rows-num" value="10" size="3">
+      <input id="rows-num" type="number" value="10" step="1" min="1" max="100" size="3">
       <br>
       <button type="button" id="generate-grid">Generate</button>
       <br><br>
@@ -53,8 +53,8 @@
         <option value="Global">Global</option>
       </select>
       <br>
-      <label for="gm-count">Mine Count</label>
-      <input id="gm-count" value="10" size="5">
+      <label for="gm-count">Global Count</label>
+      <input id="gm-count" type="number" value="10" step="1" min="0" size="5">
     </div>
     <div id="calculate-probability" class="tabs-button">
       Calculate Probability
@@ -401,9 +401,10 @@
             rel="noopener noreferrer">https://computronium.org/minesweeper/index.html</a></b>, and <b><a
             href="https://www.youtube.com/@minesweeperstrategy7245" target="_blank"
             rel="noopener noreferrer">https://www.youtube.com/@minesweeperstrategy7245</a></a></b>
+        <div id="patterns-table-of-contents"></div>
         <ul id="patterns-list" style="--size-tile: 24px; --size-image: 16px;">
-          <li>
-            <b>Number of Empty Spaces = Number of Mines</b>
+          <li id="patterns-empty">
+            <h3>Number of Empty Spaces = Number of Mines</h3>
             <div>
               This is a common pattern that you will see. Here is a corner 1. Since all spaces but the bottom right is
               filled as safe, the bottom right tile must be a mine.
@@ -417,37 +418,37 @@
               <div class="tile-template" data-ncolumns="7" data-str="c.c.v.v.v.c.c.,x12321x,xxxxxxx,"></div>
             </div>
           </li>
-          <li>
-            <b>Flag Number Reduction</b>
+          <li id="patterns-fnr">
+            <h3>Flag Number Reduction</h3>
             <div>
               Whenever you see flags/mines near number tiles, subtract the number by the number of adjacent flag tiles.
-              Here is an example including the <b>Number of Empty Spaces = Number of Mines</b> pattern. The 3 becomes a
+              Here is an example including the <b><a href="#patterns-empty">Number of Empty Spaces = Number of Mines</a></b> pattern. The 3 becomes a
               2,
               and the 2 unknown tiles above must be mines.
               <div class="tile-template" data-ncolumns="5" data-str="cxv.v.c,cx3xc,cx1fc,xx1xx,"></div>
               <br>
               Reducing numbers is then combined with other patterns. For example, here a wall of 3-3-2 is a disguised
-              <b>1-2-1</b> pattern. The tiles above the 1s must be mines.
+              <b><a href="#patterns-121">1-2-1</a></b> pattern. The tiles above the 1s must be mines.
               <div class="tile-template" data-ncolumns="6" data-str="c.v.c.v.c.c.,f3322x,f21f10,111110,000000,"></div>
             </div>
           </li>
-          <li>
-            <b>Adjacent Tiles Near 0</b>
+          <li id="patterns-atn0">
+            <h3>Adjacent Tiles Near 0</h3>
             <div>
               All the tiles near 0 must be safe. Generally in Minesweeper and its game clones, they automatically click
               all 0 tiles and the safe adjacent tiles near the 0s. You generally do not have to manually click 0s as
               safe.
               <div class="tile-template" data-ncolumns="5" data-str="ccccc,cc.c.c.c,cc.0c.c,cc.c.c.c,ccccc,"></div>
               <br>
-              However, when using the <b>Flag Number Reduction</b> pattern, if all flags were placed on a number tile,
+              However, when using the <b><a href="#patterns-fnr">Flag Number Reduction</a></b> pattern, if all flags were placed on a number tile,
               the rest
               of the tiles near the number must be safe.
               <br>For example, the 3s and the 1s shown both become 0, making all adjacent tiles safe.
               <div class="tile-template" data-ncolumns="5" data-str="ccccc,xffc.c,x33c.c,x1fc.c,x1c.cc,"></div>
             </div>
           </li>
-          <li>
-            <b>1-1</b>
+          <li id="patterns-11">
+            <h3>1-1</h3>
             <div>
               If a 1-1 pattern is near a wall, or has a tile blocking one side of the 1-1, the corner near the 1-1 is
               safe.
@@ -463,53 +464,53 @@
               <div class="tile-template" data-ncolumns="5" data-str="ccccc,cc.c.c.c,cx1cc,cx1cc,cxxxc,ccccc,"></div>
             </div>
           </li>
-          <li>
-            <b>1-2</b>
+          <li id="patterns-12">
+            <h3>1-2</h3>
             <div>
               A corner near the 2 is guaranteed a mine, and adjacent tiles of the 1 not adjacent of the 2 is guaranteed
               safe.
               <div class="tile-template" data-ncolumns="10" data-str="cc.ccv.cc.ccv.,cx12xcc.12x,cxxxxcc.xxx,"></div>
             </div>
           </li>
-          <li>
-            <b>1-2-1</b>
+          <li id="patterns-121">
+            <h3>1-2-1</h3>
             <div>
-              This pattern is an extension of the <b>1-2</b> pattern, where the mines are always on the sides of the 1s
+              This pattern is an extension of the <b><a href="#patterns-12">1-2</a></b> pattern, where the mines are always on the sides of the 1s
               and are touching the corner of the 2.
               <div class="tile-template" data-ncolumns="5" data-str="c.v.c.v.c.,c.121c.,c.xxxc.,cxxxc,"></div>
             </div>
           </li>
-          <li>
-            <b>1-2-2-1</b>
+          <li id="patterns-1221">
+            <h3>1-2-2-1</h3>
             <div>
-              This pattern is an extension of the <b>1-2</b> pattern, where the mines are always on the sides of the 2s
+              This pattern is an extension of the <b><a href="#patterns-12">1-2</a></b> pattern, where the mines are always on the sides of the 2s
               and are touching the corner of the 1s.
               <div class="tile-template" data-ncolumns="6" data-str="c.c.v.v.c.c.,c.1221c.,c.x00xc.,cxxxxc,"></div>
               <br>
-              Here is an example of a disguised 1-2-2-1 with the Flag Number Reduction pattern. The 1-2-3-3 column with
+              Here is an example of a disguised <a href="#patterns-1221">1-2-2-1</a> with the Flag Number Reduction pattern. The 1-2-3-3 column with
               the flags become a 1-2-2-1. Note: The mines could be in either side, but all the sides not near the 2s on
               the left/right are safe.
               <div class="tile-template" data-ncolumns="3" data-str="c.c.c.,c.1c.,c2c,c3c,f3c.,fc.c.,"></div>
             </div>
           </li>
-          <li>
-            <b>1-3-1 Corner</b>
+          <li id="patterns-131c">
+            <h3>1-3-1 Corner</h3>
             <div>
               This pattern has a mine on the outer corner of the 3, and safe tiles on the corner of the 1s not touching
               the 3.
               <div class="tile-template" data-ncolumns="4" data-str="c.ccv.,x13c,xx1c,xxxc.,"></div>
             </div>
           </li>
-          <li>
-            <b>2-2-2 Corner</b>
+          <li id="patterns-222c">
+            <h3>2-2-2 Corner</h3>
             <div>
-              This pattern does the inverse of the <b>1-3-1 Corner</b> pattern, where safe tiles are mines, and the mine
+              This pattern does the inverse of the <b><a href="#patterns-131c">1-3-1 Corner</a></b> pattern, where safe tiles are mines, and the mine
               tile is safe.
               <div class="tile-template" data-ncolumns="4" data-str="v.ccc.,x22c,xx2c,cxxv.,"></div>
             </div>
           </li>
-          <li>
-            <b>2D 1-1, 2-2, 3-3</b>
+          <li id="patterns-2d-112233">
+            <h3>2D 1-1, 2-2, 3-3</h3>
             <div>
               For this pattern, generally if the number is the same as the left (1, 2, or 3), then the 3 tiles on the
               right must be safe.
@@ -521,8 +522,8 @@
                 data-str="xccc.cxccc.cxccc.,x11c.cx22c.cx33c.,xccc.cxccc.cxccc.,"></div>
             </div>
           </li>
-          <li>
-            <b>2D 1-1, 2-2, 3-3 Special Cases</b>
+          <li id="patterns-2d-112233-2">
+            <h3>2D 1-1, 2-2, 3-3 Special Cases</h3>
             <div>
               More special case patterns can be found for these 2D 1-1, 2-2, and 3-3.
               <br>
@@ -547,10 +548,10 @@
               </div>
             </div>
           </li>
-          <li>
-            <b>1-3 and 1-4</b>
+          <li id="patterns-1314">
+            <h3>1-3 and 1-4</h3>
             <div>
-              These are similar to the <b>1-2 Pattern</b>, where the tiles left of the 1 must be safe, and the other
+              These are similar to the <b><a href="#patterns-12">1-2 Pattern</a></b>, where the tiles left of the 1 must be safe, and the other
               tiles on the right must be mines.
               <br>
               <br>
@@ -561,8 +562,8 @@
               <div class="tile-template" data-ncolumns="4" data-str="c.ccv.,c.14v.,c.xxv.,xxxc,"></div>
             </div>
           </li>
-          <li>
-            <b>2D 1-4, 2-5, 3-6, and 4-7</b>
+          <li id="patterns-2d-14253647">
+            <h3>2D 1-4, 2-5, 3-6, and 4-7</h3>
             <div>
               These patterns show that the tiles are safe on the top 3 adjacent tiles, but there are mines on the bottom
               3 adjacent tiles. There is an exception of the 4-7 with additional guaranteed mines.
@@ -570,24 +571,24 @@
                 data-str="c.c.c.c.c.c.c.c.c.c.c.c.,c1cc2cc3cv.4v.,c4cc5cc6cv.7v.,v.v.v.v.v.v.v.v.v.v.v.v.,"></div>
             </div>
           </li>
-          <li>
-            <b>2D 1-2-1, 1-3-2, and 2-4-2</b>
+          <li id="patterns-2d-121132242">
+            <h3>2D 1-2-1, 1-3-2, and 2-4-2</h3>
             <div>
               These patterns show 8 tiles that are on the left, the right, and the middle. The exceptions are that the
               1-3-2 have mines on top and bottom of the 2, and the 2-4-2 have mines on the corner of the 4s.
               <br>
-              Basically, a 2-4-2 is a <b>1-2-1</b> pattern with mines on all sides except on top and bottom of 4, and
+              Basically, a 2-4-2 is a <b><a href="#patterns-121">1-2-1</a></b> pattern with mines on all sides except on top and bottom of 4, and
               left and right of the 2s.
               <div class="tile-template" data-ncolumns="10"
                 data-str="c.cc.cc.c.cc.v.c.,c.121c.c.132c.,c.cc.cc.c.cc.v.c.,c.v.c.v.c.ccccc,c.242c.ccccc,c.v.c.v.c.ccccc">
               </div>
             </div>
           </li>
-          <li>
-            <b>1-1-1 and 1-1-1-1</b>
+          <li id="patterns-disguised-1s">
+            <h3>1-1-1 and 1-1-1-1</h3>
             <div>
               Using the <b>Flag Number Reduction</b> pattern, these patterns are disguised, but behave similarly to the
-              <b>1-2-1</b> and <b>1-2-2-1</b> pattern. However, the mine and safe tiles for 1-2-1 and 1-2-2-1 are
+              <b><a href="#patterns-121">1-2-1</a></b> and <b><a href="#patterns-1221">1-2-2-1</a></b> pattern. However, the mine and safe tiles for 1-2-1 and 1-2-2-1 are
               inversed for 1-1-1 and 1-1-1-1.
               <br>
               Here is an example of a disguised 1-1-1
@@ -597,21 +598,21 @@
               <div class="tile-template" data-ncolumns="3" data-str="xfx,v.2x,c.1x,c.1x,v.4x,fff,"></div>
             </div>
           </li>
-          <li>
-            <b>Shared Mines in Regions</b>
+          <li id="patterns-shared-mines">
+            <h3>Shared Mines in Regions</h3>
             <div>
               For a region of tiles, if you know that mines can be shared for 2 different number tiles, you can use this
-              information to do the <b>Flag Number Reduction</b> pattern to use with other patterns.
+              information to do the <b><a href="#patterns-fnr">Flag Number Reduction</a></b> pattern to use with other patterns.
               <br>
               <br>
               For a simple example, the rightmost 2 tile must share at least 2 mines in the ? regions with the leftmost
               2 tile. Therefore, the leftmost 2 becomes a 0, thus the other adjacent tiles for the leftmost tile must be
-              free due to the <b>Adjacent Tiles Near 0</b> pattern.
+              free due to the <b><a href="#patterns-atn0">Adjacent Tiles Near 0</a></b> pattern.
               <div class="tile-template" data-ncolumns="5" data-str="xxxxx,xxc?xx,c.2c?2x,c.c.c?xx,"></div>
               <br>
               Here is another example that uses another pattern. For the 2 bottom tile numbers, 1 mine must be in one of
               the 2 tiles while the other is safe.<br>Moreover, the 2 number tile on top of the region shares the mine.
-              This makes the 2 tile be a 1 tile.<br>Due to these circumstances, this creates a <b>2D 1-1</b> pattern,
+              This makes the 2 tile be a 1 tile.<br>Due to these circumstances, this creates a <b><a href="#patterns-2d-112233">2D 1-1</a></b> pattern,
               allowing the top tiles on the topmost 1 tile to be safe.
               <div class="tile-template" data-ncolumns="5" data-str="ccc.c.c.,ccc1x,ccc2x,cxc?c?x,xf21x,xxxxx,"></div>
             </div>

@@ -21,4 +21,4 @@ Python 3 is also used to build the server to build and test the website: `zig bu
 
 
 ## TODO
-- Cleanup some pages, add anchor links + table of contents in the Minesweeper Patterns and Math Explanation page.
+- Cleanup/format pages.

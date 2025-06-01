@@ -29,6 +29,8 @@ let flash_body;
 let flash_content;
 let select_probability;
 let gm_count;
+let patterns_list;
+let patterns_table_of_contents;
 let rows = null;
 let columns = null;
 let keybind_map = new Map();
@@ -112,6 +114,8 @@ async function init() {
     flash_content = document.getElementById('flash-content');
     select_probability = document.getElementById('select-probability');
     gm_count = document.getElementById('gm-count');
+    patterns_list = document.getElementById('patterns-list');
+    patterns_table_of_contents = document.getElementById('patterns-table-of-contents');
     const root_comp = getComputedStyle(document.documentElement);
     tile_colors.neutral = root_comp.getPropertyValue('--ms-probability');
     tile_colors.mine = root_comp.getPropertyValue('--ms-probability-mine');
@@ -133,7 +137,7 @@ async function init() {
             };
             image_div.onmouseleave = () => {
                 image_div.classList.remove('tile-hovered');
-                tile_description.textContent = get_default_tile_description();
+                tile_description.innerHTML = get_default_tile_description();
             };
             update_tile_div(image_div, false); //Don't show as clicked.
             const keybind_div = document.createElement('div');
@@ -183,11 +187,8 @@ async function init() {
             tab_elem.onclick = (e) => show_tab(tab_elem, tab_id);
         }
     });
-    rows_num.onchange = e => rows_num.value = Math.min(Math.max(parseInt(rows_num.value), 1), 100);
     rows_num.onclick = deselect_tiles_f;
-    columns_num.onchange = e => columns_num.value = Math.min(Math.max(parseInt(columns_num.value), 1), 100);
     columns_num.onclick = deselect_tiles_f;
-    gm_count.onchange = e => gm_count.value = Math.max(parseInt(gm_count.value), 0);
     gm_count.onclick = deselect_tiles_f;
     generate_grid.onclick = e => {
         if (is_calculating) return;
@@ -231,6 +232,13 @@ async function init() {
             flash_message(FLASH_SUCCESS, 'Copied to Clipboard', 3000);
         };
     });
+    patterns_table_of_contents.textContent = '<h3>Patterns List</h3><ul>';
+    [...patterns_list.children].forEach(li => {
+        const a_id = li.id;
+        const title = li.children[0].textContent;
+        patterns_table_of_contents.textContent += `<li><b><a href="#${a_id}">${title}</a><b></li>`
+    });
+    patterns_table_of_contents.innerHTML = patterns_table_of_contents.textContent + '</ul>';
     flash_body.onclick = hide_flash;
     select_probability.onchange = e => {
         const prob_type = e.target.value;
@@ -460,6 +468,35 @@ class SelectedTile {
         }
         return array;
     }
+    center_view() {
+        console.assert(grid_body != null && columns != null, 'grid_body and columns must not be null');
+        const scroll_obj = {
+            behavior: 'smooth',
+            block: 'center',
+            inline: 'center'
+        };
+        if (this.type === SelectedTile.One) {
+            const tile = grid_body.children[this.select.y * columns + this.select.x];
+            const tile_rect = tile.getBoundingClientRect();
+            const grid_body_rect = grid_body.getBoundingClientRect();
+            const lr_visible = tile_rect.left >= grid_body_rect.left && tile_rect.right <= grid_body_rect.right;
+            const mb = parseInt(document.body.style.marginBottom);
+            const ud_visible = tile_rect.top >= 0 && tile_rect.bottom <= window.innerHeight - mb;
+            if (!lr_visible || !ud_visible) tile.scrollIntoView(scroll_obj);
+        } else if (this.type === SelectedTile.Many) {
+            const ultile = grid_body.children[this.select.p.y * columns + this.select.p.x];
+            const urtile = grid_body.children[this.select.p.y * columns + this.select.p.x + this.select.s.x - 1];
+            const bltile = grid_body.children[(this.select.p.y + this.select.s.y - 1) * columns + this.select.p.x];
+            const ultile_rect = ultile.getBoundingClientRect();
+            const urtile_rect = urtile.getBoundingClientRect();
+            const bltile_rect = bltile.getBoundingClientRect();
+            const grid_body_rect = grid_body.getBoundingClientRect();
+            const mb = parseInt(document.body.style.marginBottom);
+            if (ultile_rect.top < 0 || ultile_rect.left < grid_body_rect.left) ultile.scrollIntoView(scroll_obj);
+            if (bltile_rect.bottom > window.innerHeight - mb) bltile.scrollIntoView(scroll_obj);
+            if (urtile_rect.right > grid_body_rect.right) urtile.scrollIntoView(scroll_obj);
+        }
+    }
     move(new_st) {
         this.type = new_st.type;
         this.select = new_st.select;
@@ -572,24 +609,32 @@ function tile_select_any_f(e) {
     }
     tile_gui.classList.remove('panel-hide-down');
     tile_gui.classList.add('panel-show');
-    tile_description.textContent = get_default_tile_description();
+    tile_description.innerHTML = get_default_tile_description();
     keybind_map.set('Escape', deselect_tiles_f);
     const down_f = e => {
+        e.preventDefault();
+        selected_tile.center_view();
         deselect_tiles_f(e);
         this.shift(SelectedTile.Down);
         tile_select_any_f.bind(this)(e);
     };
     const up_f = e => {
+        e.preventDefault();
+        selected_tile.center_view();
         deselect_tiles_f(e);
         this.shift(SelectedTile.Up);
         tile_select_any_f.bind(this)(e);
     };
     const left_f = e => {
+        e.preventDefault();
+        selected_tile.center_view();
         deselect_tiles_f(e);
         this.shift(SelectedTile.Left);
         tile_select_any_f.bind(this)(e);
     };
     const right_f = e => {
+        e.preventDefault();
+        selected_tile.center_view();
         deselect_tiles_f(e);
         this.shift(SelectedTile.Right);
         tile_select_any_f.bind(this)(e);
@@ -672,12 +717,19 @@ function clear_probability(div) {
 }
 function get_default_tile_description() {
     console.assert(grid_body != null && columns != null, 'grid_body and columns must not be null');
-    if (selected_tile.type == SelectedTile.One) {
+    let td = '';
+    if (selected_tile.type === SelectedTile.One) {
         const div = grid_body.children[selected_tile.select.y * columns + selected_tile.select.x];
+        td += `(x:${selected_tile.select.x},y:${selected_tile.select.y})<br>`;
         let status;
-        if ((status = div.dataset.error) !== undefined) return CalculateStatus.$error_message[status];
+        if ((status = div.dataset.error) !== undefined) {
+            td += CalculateStatus.$error_message[status];
+            return td;
+        }
+    } else if (selected_tile.type === SelectedTile.Many) {
+        td += `(x:${selected_tile.select.p.x},y:${selected_tile.select.p.y}):(x:${selected_tile.select.p.x + selected_tile.select.s.x - 1},y:${selected_tile.select.p.y + selected_tile.select.s.y - 1})<br>`;
     }
-    return '';
+    return td;
 }
 class MineFrequencyGraph {
     constructor(subsystem) {
@@ -779,11 +831,11 @@ class MFGList {
                 max_gm = Math.max(max_gm, gm);
             }
             if (gmfg.size != 0 && gmfg.size == too_many_skip) {
-                flash_message(FLASH_ERROR, `Error: Too little mines! The global mine count is ${global_mine_count + mine_flag_count} - (${mine_flag_count} mines + flags) = ${global_mine_count}. All solutions require at least ${min_gm} or more mines.`);
+                flash_message(FLASH_ERROR, `Error: Too little mines! The global mine count is ${global_mine_count + mine_flag_count} - (${mine_flag_count} mines + flags) = ${global_mine_count}. All solutions require at least ${min_gm} or more mines. Global mine count must be >= ${min_gm + mine_flag_count}.`);
                 return;
             }
             if (a_denominator === 0n) {
-                flash_message(FLASH_ERROR, `Error: Too many mines! The global mine count is ${global_mine_count + mine_flag_count} - (${mine_flag_count} mines + flags) = ${global_mine_count}. One solution has a maximum of ${max_gm} mines and there are only ${non_adjacent_tiles} non-adjacent tiles to fill, resulting in the sum of only ${max_gm + non_adjacent_tiles} mines.`);
+                flash_message(FLASH_ERROR, `Error: Too many mines! The global mine count is ${global_mine_count + mine_flag_count} - (${mine_flag_count} mines + flags) = ${global_mine_count}. One solution has a maximum of ${max_gm} mines and there are only ${non_adjacent_tiles} non-adjacent tiles to fill, resulting in the sum of only ${max_gm + non_adjacent_tiles} mines. Global mine count must be <= ${max_gm + non_adjacent_tiles + mine_flag_count}.`);
                 return;
             }
         }
@@ -821,7 +873,7 @@ class MFGList {
         //Probability of an empty matrix (No adjacent tiles) is just (number of mines)/(number of non-adjacent tiles)
         if (this.global.length === 0) {
             if (global_mine_count > non_adjacent_tiles) {
-                flash_message(FLASH_ERROR, `Error: Too many mines! The global mine count is ${global_mine_count + mine_flag_count} - (${mine_flag_count} mines + flags) = ${global_mine_count}. There are only ${non_adjacent_tiles} non-adjacent tiles that can be mines.`);
+                flash_message(FLASH_ERROR, `Error: Too many mines! The global mine count is ${global_mine_count + mine_flag_count} - (${mine_flag_count} mines + flags) = ${global_mine_count}. There are only ${non_adjacent_tiles} non-adjacent tiles that can be mines. Global mine count must be <= ${mine_flag_count + non_adjacent_tiles}.`);
                 return;
             }
             na_denominator = non_adjacent_tiles;
@@ -959,22 +1011,22 @@ function parse_probability_list(c_arr_ptr) {
                 }
             }
         }
-        if(mfg_list.convolve_all()){
+        if (mfg_list.convolve_all()) {
             let total_num = 0n;
-            if(mfg_list.global.length!==0){
-                if(mfg_list.global.length!==1){
+            if (mfg_list.global.length !== 0) {
+                if (mfg_list.global.length !== 1) {
                     AppendResults('Whole System<br>');
-                    const first_map=mfg_list.global[0];
-                    for(const [_,f] of first_map.map){
+                    const first_map = mfg_list.global[0];
+                    for (const [_, f] of first_map.map) {
                         total_num += f;
                     }
                     AppendResults(`Total valid solutions found for this system: ${total_num.toLocaleString()}<br>`);
-                    for(const [m,f] of first_map.map){
+                    for (const [m, f] of first_map.map) {
                         AppendResults(`${f.toLocaleString()} solution(s) have ${m} total mines.<br>`);
                     }
                 }
             }
-            if(select_probability.value === 'Global') mfg_list.gm_probability();
+            if (select_probability.value === 'Global') mfg_list.gm_probability();
         }
     } else {
         flash_message(FLASH_ERROR, 'Encountered an error: \'' + CalculateStatus.$error_message[calc_arr_status]) + '\'';
@@ -1050,7 +1102,7 @@ function create_board_pattern(div_parent, num_columns, tile_string) {
                 if (tile_enum == MsType.unknown) {
                     const end = tile_string.indexOf(')', ch_i + 1);
                     if (end !== -1) {
-                        const text_slice=tile_string.slice(ch_i + 2, end);
+                        const text_slice = tile_string.slice(ch_i + 2, end);
                         tile_div.textContent = `\\( ${text_slice} \\)`;
                         renderMathInElement(tile_div);
                     } else throw Error(`Missing ')'`);

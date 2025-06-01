@@ -29,9 +29,12 @@
 }
 
 a {
-    color: inherit;
+    color: #00BF00;
     padding: inherit;
     text-decoration: none;
+}
+a:hover{
+    color:#BF0000;
 }
 
 .tile-template,
