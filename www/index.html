@@ -97,6 +97,8 @@
         The probability is calculated depending on the option that you have chosen (Local or Global Probability).<br><br>
         See the Probability Results tab to see an example of the matrix calculations in action.<br><br>
         Note: If you recalculate the same board, the data of the calculation will not be changed, meaning that you can see Local / Global Probability calculations from the same board without waiting for the calculation to complete multiple times.
+        <br><br>
+        Once the probability is calculated, you can click on adjacent tiles to see the calculations of the total number of solutions, and the frequency of solutions s that have m number of mines. This shows the frequencies per tile and per board/system.
       </div>
     </div>
     <div id="probability-tab" class="options-gui panel-hide-right">
@@ -249,7 +251,7 @@
           <br>
           The formula of the sample space, or denominator, for \( \text{GlobalProbability}_A(T) \) is 
           \[
-            \displaystyle \sum_{ m \in S_{M_G} } MF_G(m) * \binom{U_{NA}}{M_G - m}
+            \displaystyle \sum_{ m \in S_{M_G} } MF_G(m) \cdot \binom{U_{NA}}{M_G - m}
           \]
           This formula enumerates each number of occurances of each number of mines from the solution set, and multiplies the leftover mine combination \( \binom{U_{NA}}{M_G - m_n} \) as the "weighted sum" for each \( m \in S_{M_G} \).
           <br>
@@ -302,9 +304,9 @@
           \[
             \text{GlobalProbability}_A(T) = 
             \frac{
-              \displaystyle \sum_{ m_T \in S_{M_T} } MF_G(m_T) * \binom{U_{NA}}{M_G - m_T}
+              \displaystyle \sum_{ m_T \in S_{M_T} } MF_t(m_T) \cdot \binom{U_{NA}}{M_G - m_T}
             }{
-              \displaystyle \sum_{ m \in S_{M_G} } MF_G(m) * \binom{U_{NA}}{M_G - m}
+              \displaystyle \sum_{ m \in S_{M_G} } MF_G(m) \cdot \binom{U_{NA}}{M_G - m}
             }
           \]
           It should be noted that for guaranteed safe and mine tiles,
@@ -361,21 +363,246 @@
             }
           \]
         </div>
-      </div>
-      <h3>Global Probability (Adjacent Tiles), where only some solutions are valid</h3>
-      <div>
-        What happens if the global mine count \( M_G \) is just 1? This means that there can only be 2 solutions that are valid that have 1 mine, and the 12 solutions that are 2 mines are simply discarded.
-        So the formula can be changed depending on the global mine count, and thus \( \text{GlobalProbability}_A(T) \) can be rewritten as the following.
-        \[ 
-          \frac{
-            \displaystyle \sum_{ m_T \in S_{M_T} | m_T \le M_G } MF_G(m_T) * \binom{U_{NA}}{M_G - m_T}
-          }{
-            \displaystyle \sum_{ m \in S_{M_G} | m \le M_G } MF_G(m) * \binom{U_{NA}}{M_G - m}
-          }
-        \]
-        Note, that if the global mine count is less than all known solution mine numbers, then the program will throw an error of 'Too little mines!'.
-        <br>
-        Moreover, if \( M_G \gt max(S_{M_G}) + U_{NA} \), the program will throw an error of 'Too Many Mines!', since the maximum number of mines in a solution set + non-adjacent tiles is the limit that would fill the board with mines.
+        <h3>Global Probability (Adjacent Tiles), where only some solutions are valid</h3>
+        <div>
+          What happens if the global mine count \( M_G \) is just 1? This means that there can only be 2 solutions that are valid that have 1 mine, and the 12 solutions that are 2 mines are simply discarded.
+          So the formula can be changed depending on the global mine count, and thus \( \text{GlobalProbability}_A(T) \) can be rewritten as the following.
+          \[ 
+            \frac{
+              \displaystyle \sum_{ m_T \in S_{M_T} | m_T \le M_G } MF_T(m_T) \cdot \binom{U_{NA}}{M_G - m_T}
+            }{
+              \displaystyle \sum_{ m \in S_{M_G} | m \le M_G } MF_G(m) \cdot \binom{U_{NA}}{M_G - m}
+            }
+          \]
+          Note, that if the global mine count is less than all known solution mine numbers, then the program will throw an error of 'Too little mines!'.
+          <br>
+          Moreover, if \( M_G \gt max(S_{M_G}) + U_{NA} \), the program will throw an error of 'Too Many Mines!', since the maximum number of mines in a solution set + non-adjacent tiles is the limit that would fill the board with mines.
+        </div>
+        <h3>Convolution to Calculate Mine Count and Frequencies of the Whole Board</h3>
+        <div>
+          Let's consider a board with 2 subsystems. Subsystems, in the context of this calculator, are board systems where adjacent tiles are not shared from other systems, and can be independently calculated for its solutions counting the frequencies and number of mines.
+          <br>
+          For example: Let's calculate the mines and frequencies map of this whole board with a 1-1-1 and a 2-3-2 for each adjacent tile marked with a number, where the adjacent tiles are not shared between the 1-1-1 and 2-3-2.
+          <div class="tile-template" data-ncolumns="5" data-str="c(0)c(1)c(2)c(3)c(4),c(5)111c(6),c(7)c(8)c(9)c(10)c(11),c(12)c(13)c(14)c(15)c(16),c(17)232c(18),c(19)c(20)c(21)c(22)c(23),ccccc,"></div>
+          \[
+            \begin{array}{l}
+            MF_0(m) = MF_4(m) = MF_5(m) = MF_6(m) = MF_7(m) = MF_{11}(m)\\
+            = 
+              \begin{cases}
+              2 & \text{if } m = 2 \\
+              0   & \text{otherwise}
+              \end{cases}\\
+            MF_1(m) = MF_3(m) = MF_8(m) = MF_{10}(m)\\
+            =
+              \begin{cases}
+              3 & \text{if } m = 2 \\
+              0   & \text{otherwise}
+              \end{cases}\\
+            MF_2(m) = MF_9(m)\\
+            =
+              \begin{cases}
+              1 & \text{if } m = 1 \\
+              0   & \text{otherwise}
+              \end{cases}\\
+            MF_{12}(m) = MF_{16}(m) = MF_{17}(m) = MF_{18}(m) = MF_{19}(m) = MF_{23}(m)\\
+            = 
+              \begin{cases}
+              2 & \text{if } m = 4 \\
+              0   & \text{otherwise}
+              \end{cases}\\
+            MF_{13}(m) = MF_{15}(m) = MF_{20}(m) = MF_{22}(m)\\
+            = 
+              \begin{cases}
+              4 & \text{if } m = 3 \\
+              9 & \text{if } m = 4 \\
+              0   & \text{otherwise}
+              \end{cases}\\
+            MF_{14}(m) = MF_{21}(m)\\
+            = 
+              \begin{cases}
+              4 & \text{if } m = 3 \\
+              0   & \text{otherwise}
+              \end{cases}\\
+            \end{array}
+          \]
+          Let's also consider the mine and frequency map functions for each subsystem to count the total number of valid solutions. \(MF_{G_1}\) describes the 1-1-1 subsystem and \(MF_{G_2}\) describes the 2-3-2 subsystem.
+          \[
+            \begin{array}{l}
+            MF_{G_1}(m) = 
+              \begin{cases}
+              2 & \text{if } m = 1 \\
+              12 & \text{if } m = 2 \\
+              0   & \text{otherwise}
+              \end{cases}\\
+            MF_{G_2}(m) = 
+              \begin{cases}
+              8 & \text{if } m = 3 \\
+              12 & \text{if } m = 4 \\
+              0   & \text{otherwise}
+              \end{cases}\\
+            \end{array}
+          \]
+          You can verify these numbers by clicking the board above, and pasting it to calculate its probability. Clicking on adjacent tiles will give the number of solutions s and the number of mines m per tile and the system.
+          <br><br>
+          Let's define the whole system as \( G_G \) that descibes the set of the solutions for 1-1-1 and 2-3-2 together.
+          <br><br>
+          In order to consider the number of solutions of the whole board and tile rather than the individual subsystems, we would have to count each solution from \( G_1 \) and \( G_2 \). By multiplying the valid number of solutions from \( G_1 \) and \( G_2 \).
+          It seems there are (2+12) = 14 valid solutions for \( G_1 \) and (8+12) = 20 valid solutions for \( G_2 \). This means there are a total of 14*20 = 280 solutions that should be considered.
+          For calculating the number of mines, it seems that there can be a minimum of (1+3) = 4 mines and a maximum of (2+4) = 6 mines. There can also be (2+3) = 5 mines as part of the solution too.
+          <br><br>
+          With the information of the separate systems, it doesn't tell the number of solutions per mine number for a tile and the whole board.
+          In order to get the total number of solutions and number of mines of the whole board rather, discrete convolution would be used.
+          The convolution formula to get \( MF_{G_G}(m) \), where \( BS = \{1, 2, 3, \dots\} \) describes the subsystems is the following.
+          \[
+            MF_{G_t}(m) = \sum_{ S \in BS \setminus \{t\} }{ (MF_{G_t} \ast MF_{G_S})(m) }
+          \]
+          We convolve with all other different systems other than itself.
+          To do convolution, we try to add every combination of \( m_t \) from the first map function with \( m'_t \) from another map function.
+          Also, \( n_t \) is multiplied from the first map function with \( n'_t \) from another map function.
+          The function below descibes a dictionary of the convolution of a \( (m_t,m'_t) \) pair and the \( (m,n) \) sum/multiplication pair.
+          \[
+            CD(MF_1,MF_2) =
+            \left\{
+            \begin{array}{lll}
+              (m_0,m'_0) : & \{ m: m_0 + m'_0, & n: MF_1(m_0) \cdot MF_2(m'_0) \}\\
+              (m_0,m'_1) : & \{ m: m_0 + m'_1, & n: MF_1(m_0) \cdot MF_2(m'_1) \}\\
+              (m_0,m'_2) : & \{ m: m_0 + m'_2, & n: MF_1(m_0) \cdot MF_2(m'_2) \}\\
+                                  & \vdots     & \vdots \\
+              (m_1,m'_0) : & \{ m: m_1 + m'_0, & n: MF_1(m_1) \cdot MF_2(m'_0) \}\\
+              (m_1,m'_0) : & \{ m: m_1 + m'_1, & n: MF_1(m_1) \cdot MF_2(m'_1) \}\\
+                                  & \vdots     & \vdots \\
+              (m_a,m'_b) : & \{ m: m_a + m'_b, & n: MF_1(m_a0) \cdot MF_2(m'_b) \}\\
+            \end{array}
+            \right\}
+          \]
+          We need to sum all \( m_t + m'_t \) pairs that are equal together.
+          The whole convolution formula for some map functions \( MF_1 \) and \( MF_2 \) can finally be defined as the following using Iverson Bracket notation.
+          \[
+              (MF_1 \ast MF_2)(m) = \sum_{(m_i,m'_j) \text{ s.t. } m_i \in S_{M_1}, m'_j \in S_{M_2} }{[m_i + m'_j = m] \cdot MF_1(m_i) \cdot MF_2(m'_j)}
+          \]
+          The Iverson Bracket notation \( [m_i + m'_j = m] \) means that for every \( m_i + m'_j \) that sums to \( m \), it is 1. Otherwise it is 0 whether \( m_i + m'_j \neq m \). Sum every same \( m \) with \( n_i * n'_j \) or \( MF_1(m_i) \cdot MF_2(m'_j) \)
+          <br><br>
+          Using this, the following formulas would be used to get the total number of solutions per mine number of the whole board.
+          \[
+            \begin{array}{ll}
+              MF_{G_G}(m) &= \sum_{S \in BS \setminus \{1\}}{(MF_1 \ast MF_{G_S})(m)} \\
+              & = \sum_{S \in BS \setminus \{2\}}{(MF_2 \ast MF_{G_S})(m)} \\
+              & = \sum_{S \in BS \setminus \{3\}}{(MF_3 \ast MF_{G_S})(m)} \\
+              & \vdots
+            \end{array}
+          \]
+          The first map function \( MF_1 \) can just be used as the other subsystems 2, 3, 4, ... would result in the same calculation.
+          <br>
+          An example calculation of MF_{G_G} is:
+          \[
+            \begin{array}{ll}
+              CD(MF_{G_1},MF_{G_2}) &=
+              \left\{
+              \begin{array}{l}
+                (1,3) : \{ m: 1 + 3, n: MF_{G_1}(1) \cdot MF_{G_2}(3) \}\\
+                (1,4) : \{ m: 1 + 4, n: MF_{G_1}(1) \cdot MF_{G_2}(4) \}\\
+                (2,3) : \{ m: 2 + 3, n: MF_{G_1}(2) \cdot MF_{G_2}(3) \}\\
+                (2,4) : \{ m: 2 + 4, n: MF_{G_1}(2) \cdot MF_{G_2}(4) \}\\
+              \end{array}
+              \right\}\\
+            &=
+              \left\{
+              \begin{array}{l}
+                (1,3) : \{ m: 4, n: 16 \}\\
+                (1,4) : \{ m: 5, n: 24 \}\\
+                (2,3) : \{ m: 5, n: 96 \}\\
+                (2,4) : \{ m: 6, n: 144 \}\\
+              \end{array}
+              \right\}\\
+            \\
+            MF_{G_G}(m) &= 
+              \begin{cases}
+              16 & \text{if } m = 4 \\
+              24 + 96 & \text{if } m = 5 \\
+              144 & \text{if } m = 6 \\
+              0   & \text{otherwise}
+              \end{cases}
+            = 
+              \begin{cases}
+              16 & \text{if } m = 4 \\
+              120 & \text{if } m = 5 \\
+              144 & \text{if } m = 6 \\
+              0   & \text{otherwise}
+              \end{cases}\\
+            \end{array}
+          \]
+          It should be noted that 16 + 120 + 144 = 280, the total number of solutions of 1-1-1 and 2-3-2 board systems combined.
+          <br> The numbers can be verified by checking the Probability Results tab of the Whole System.
+          <br><br>
+          To get the total number of solutions per mine number of a tile, it is similar to the calculation above.
+          <br>
+          We convolve each tile using every other \( MF_{G_u} \) where \( u \) is not in the same subsystem as the tile.
+          \[
+              MF_t(m) = \sum_{S \in BS \setminus \{u\}}{(MF_t \ast MF_{G_u})(m)} \text{, } t \text{ is NOT an adjacent tile of } G_u
+          \]
+          Here is an example calculation for tile 0.
+          \[
+              \begin{array}{ll}
+                CD(MF_0,MF_{G_2}) &=
+                \left\{
+                \begin{array}{l}
+                  (2,3) : \{ m: 2 + 3, n: MF_0(2) \cdot MF_{G_2}(3) \}\\
+                  (2,4) : \{ m: 2 + 4, n: MF_0(2) \cdot MF_{G_2}(4) \}\\
+                \end{array}
+                \right\}\\
+              &=
+                \left\{
+                \begin{array}{l}
+                  (2,3) : \{ m: 5, n: 16 \}\\
+                  (2,4) : \{ m: 6, n: 24 \}\\
+                \end{array}
+                \right\}\\
+                (MF_0 \ast MF_{G_2})(m) &=
+                \begin{cases}
+                16 & \text{if } m = 5 \\
+                24 & \text{if } m = 6 \\
+                0   & \text{otherwise}
+                \end{cases}
+              \end{array}
+          \]
+          So the global probability calculated for tile 0, given the global mine count \( M_G = 9 \), number of non-adjacent tiles \( U_{NA} = 5 \), and using convolution of the map functions is the following:
+          \[
+            \begin{array}{ll}
+              \text{GlobalProbability}_A(0) &= 
+              \frac{
+                \displaystyle \sum_{ m_0 \in S_{(M_0 \ast M_{G_2})} } (MF_0 \ast MF_{G_2})(m_0) \cdot \binom{U_{NA}}{M_G - m_0}
+              }{
+                \displaystyle \sum_{ m \in S_{(M_{G_1} \ast M_{G_2})} } (MF_{G_1} \ast MF_{G_2})(m) \cdot \binom{U_{NA}}{M_G - m}
+              }\\
+              &=
+                \frac{
+                  \displaystyle \sum_{ m_0 \in S_{(M_0 \ast M_{G_2})} } (MF_0 \ast MF_{G_2})(m_0) \cdot \binom{5}{9 - m_0}
+                }{
+                  \displaystyle \sum_{ m \in S_{(M_{G_1} \ast M_{G_2})} } (MF_{G_1} \ast MF_{G_2})(m) \cdot \binom{5}{9 - m}
+                }\\
+              &=
+                \frac{
+                  (MF_0 \ast MF_{G_2})(5) \cdot \binom{5}{4} + (MF_0 \ast MF_{G_2})(6) \cdot \binom{5}{3}
+                }{
+                  (MF_{G_1} \ast MF_{G_2})(4) \cdot \binom{5}{5} + (MF_{G_1} \ast MF_{G_2})(5) \cdot \binom{5}{4} + (MF_{G_1} \ast MF_{G_2})(6) \cdot \binom{5}{3}
+                }\\
+              &=
+                \frac{
+                  16 \cdot 5 + 24 \cdot 10
+                }{
+                  16 \cdot 1 + 120 \cdot 5 + 144 \cdot 10
+                }\\
+              &=
+                \frac{
+                  320
+                }{
+                  2056
+                }\\
+              & \approx 15.6\%
+            \end{array}
+          \]
+          This percentage probability can be verified using the same board and global mine count \( M_G = 9 \).
+        </div>
       </div>
     </div>
     <div id="patterns-tab" class="options-gui panel-hide-right">

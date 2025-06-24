@@ -41,10 +41,11 @@ pub const Calculate = extern struct {
 };
 pub const CalculateArray = extern struct {
     status: CalculateStatus,
+    recalculated: bool,
     ptr: [*c]Calculate,
     len: usize,
     pub fn init_error(status: CalculateStatus) CalculateArray {
-        return .{ .status = status, .len = 0, .ptr = 0 };
+        return .{ .status = status, .recalculated = false, .len = 0, .ptr = 0 };
     }
     pub fn deinit(self: CalculateArray, allocator: @import("std").mem.Allocator) void {
         if (self.ptr != 0) {

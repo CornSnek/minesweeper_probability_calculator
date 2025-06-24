@@ -714,16 +714,46 @@ function clear_probability(div) {
     div.style.removeProperty('--tile-color');
     delete div.dataset.probability;
     delete div.dataset.error;
+    delete div.dataset.freq_a;
 }
 function get_default_tile_description() {
     console.assert(grid_body != null && columns != null, 'grid_body and columns must not be null');
     let td = '';
     if (selected_tile.type === SelectedTile.One) {
         const div = grid_body.children[selected_tile.select.y * columns + selected_tile.select.x];
-        td += `(x:${selected_tile.select.x},y:${selected_tile.select.y})<br>`;
+        td += `(x:${selected_tile.select.x},y:${selected_tile.select.y})`;
         let status;
         if ((status = div.dataset.error) !== undefined) {
-            td += CalculateStatus.$error_message[status];
+            td += `<br> ${CalculateStatus.$error_message[status]}`;
+            return td;
+        } else if ((status = div.dataset.freq_a) !== undefined) {
+            const map_regex = /([t\d]+G?):=(\d+)\./g;
+            const START = 0;
+            const TILE = 1;
+            const SYSTEM = 2;
+            let parse_state = START;
+            let match;
+            while ((match = map_regex.exec(status)) !== null) {
+                const m_str=match[1];
+                const f_str=match[2];
+                switch(parse_state){
+                    case START:
+                        console.assert(m_str==='t', 'freq_a should start with t.');
+                        td += `, ${f_str} total solution(s). Tile Mine Frequency [ `;
+                        parse_state = TILE;
+                        break;
+                    case TILE:
+                        if(!m_str.endsWith('G')){
+                            td += `(${f_str} s &rarr; ${m_str} m), `;
+                            break;
+                        }
+                        parse_state = SYSTEM;
+                        td += `] Board Mine Frequency [`
+                    case SYSTEM:
+                        td += `(${f_str} s &rarr; ${m_str.slice(0,-1)} m), `;
+                }
+            }
+            td += ']';
             return td;
         }
     } else if (selected_tile.type === SelectedTile.Many) {
@@ -929,6 +959,7 @@ function parse_probability_list(c_arr_ptr) {
     const calc_arr = new DataView(WasmMemory.buffer, c_arr_ptr, CalculateArray.$size);
     const calc_arr_status = calc_arr.getUint8(CalculateArray.status.offset, true);
     if (calc_arr_status == CalculateStatus.ok) {
+        const ca_recalculated = calc_arr.getUint8(CalculateArray.recalculated.offset, true);
         const ca_ptr = calc_arr.getUint32(CalculateArray.ptr.offset, true);
         const ca_len = calc_arr.getUint32(CalculateArray.len.offset, true);
         mfg_list = new MFGList(ca_len);
@@ -947,6 +978,8 @@ function parse_probability_list(c_arr_ptr) {
                 for (let lc_i = 0; lc_i < lc_len; lc_i++) {
                     const x = lc.getUint32(lc_i * LocationCount.$size + LocationCount.x.offset, true);
                     const y = lc.getUint32(lc_i * LocationCount.$size + LocationCount.y.offset, true);
+                    const div = grid_body.children[y * columns + x];
+                    div.dataset.freq_a = `t:=${total_solutions}.`;
                     const count = lc.getUint32(lc_i * LocationCount.$size + LocationCount.count.offset, true);
                     const mf_len = lc.getUint32(lc_i * LocationCount.$size + LocationCount.mf_len.offset, true);
                     const mfg = new MineFrequencyGraph(ca_i);
@@ -957,12 +990,12 @@ function parse_probability_list(c_arr_ptr) {
                         for (let mf_i = 0; mf_i < mf_len; mf_i++) {
                             const m = mf.getUint32(mf_i * MineFrequency.$size + MineFrequency.m.offset, true);
                             const f = mf.getUint32(mf_i * MineFrequency.$size + MineFrequency.f.offset, true);
+                            div.dataset.freq_a += `${m}:=${f}.`;
                             mfg.assign_mf(m, f);
                         }
                     }
                     mfg_list.add_local(ca_i, mfg);
                     if (select_probability.value !== 'Global') {
-                        const div = grid_body.children[y * columns + x];
                         div.textContent = select_probability.value === 'Local'
                             ? `\\( \\frac{${count}}{${total_solutions}} \\)`
                             : `\\( \\htmlStyle{font-size: 0.75em}{${format_percentage(count, total_solutions)}\\\%} \\)`;
@@ -992,6 +1025,12 @@ function parse_probability_list(c_arr_ptr) {
                 for (let mf_i = 0; mf_i < mf_len; mf_i++) {
                     const m = mf.getUint32(mf_i * MineFrequency.$size + MineFrequency.m.offset, true);
                     const f = mf.getUint32(mf_i * MineFrequency.$size + MineFrequency.f.offset, true);
+                    for (let lc_i = 0; lc_i < lc_len; lc_i++) {
+                        const x = lc.getUint32(lc_i * LocationCount.$size + LocationCount.x.offset, true);
+                        const y = lc.getUint32(lc_i * LocationCount.$size + LocationCount.y.offset, true);
+                        const div = grid_body.children[y * columns + x];
+                        div.dataset.freq_a += `${m}G:=${f}.`;
+                    }
                     mfg_global.assign_mf(m, f);
                 }
                 mfg_list.set_global(ca_i, mfg_global);
@@ -1014,7 +1053,8 @@ function parse_probability_list(c_arr_ptr) {
         if (mfg_list.convolve_all()) {
             let total_num = 0n;
             if (mfg_list.global.length !== 0) {
-                if (mfg_list.global.length !== 1) {
+                console.log(ca_recalculated);
+                if (ca_recalculated===1 && mfg_list.global.length !== 1) {
                     AppendResults('Whole System<br>');
                     const first_map = mfg_list.global[0];
                     for (const [_, f] of first_map.map) {

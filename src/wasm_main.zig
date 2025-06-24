@@ -122,6 +122,7 @@ var mm_whole: minesweeper.MinesweeperMatrix = .empty;
 var mm_subsystems: []minesweeper.MinesweeperMatrix = &.{};
 var last_calculate_str: ?[]u8 = null;
 export fn CalculateProbability() [*c]shared.CalculateArray {
+    defer @atomicStore(bool, &CancelCalculation, false, .release);
     var cmp_calculate_str: []u8 = undefined;
     if (map_parser) |mp| {
         cmp_calculate_str = mp.as_str(wasm_allocator) catch return 0;
@@ -129,6 +130,7 @@ export fn CalculateProbability() [*c]shared.CalculateArray {
     defer wasm_allocator.free(cmp_calculate_str);
     if (last_calculate_str) |lcstr| {
         if (std.mem.eql(u8, lcstr, cmp_calculate_str)) {
+            calculate_array.recalculated = false;
             return &calculate_array; //If the same board, just return the same pointer without recalculation.
         }
     }
@@ -199,6 +201,7 @@ export fn CalculateProbability() [*c]shared.CalculateArray {
             pl.* = .init_error(.alloc_error);
         calculate_array = .{
             .status = .ok,
+            .recalculated = true,
             .ptr = pl_list.ptr,
             .len = pl_list.len,
         };
@@ -274,7 +277,6 @@ export fn CalculateProbability() [*c]shared.CalculateArray {
         //}
         //std.log.debug("\n\n", .{});
     }
-    @atomicStore(bool, &CancelCalculation, false, .release);
     wasm_print.FlushPrint(false);
     FinalizeResults();
     if (calculate_array.status == .ok) { //Set null if not .ok for any status
