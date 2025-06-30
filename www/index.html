@@ -25,7 +25,7 @@
   <div id="upload-body">
     <div id="upload-container">
       <div class="upload-element">
-        Drag minesweeper screenshots here to parse into this website. This will overwrite and change the row and columns.
+        Drag minesweeper screenshots here to parse into this website. This will overwrite the board.
         <br><br>
         Note: It may predict tiles incorrectly, so you will have to check your screenshot once it has been parsed.
         <br><br>
@@ -61,11 +61,15 @@
     <div class="tabs-button" data-tab="about-tab">
       About
     </div>
-    <div class="tabs-button" data-tab="patterns-tab">
-      Minesweeper Patterns
+    <div id="progress-div" style="display: none;">
+      <progress id="subsystem-progress" value="0"></progress>
+      <progress id="calculate-progress" value="0"></progress>
     </div>
-    <div class="tabs-button" data-tab="probability-tab">
-      Math Explanation
+    <div id="calculate-probability" class="tabs-button">
+      Calculate Probability <strong class="badge">Shift</strong>+<strong class="badge">Enter</strong>
+    </div>
+    <div id="parse-screenshot-popup" class="tabs-button">
+      Parse Minesweeper Screenshot
     </div>
     <div>
       <label for="columns-num">Columns</label>
@@ -75,10 +79,7 @@
       <input id="rows-num" type="number" value="10" step="1" min="1" max="100" size="3">
       <br>
       <button type="button" id="generate-grid">Generate</button>
-      <br><br>
-      <label for="show-results-check">Show Results When Done</label>
-      <input type="checkbox" id="show-results-check">
-      <br><br>
+      <br>
       <label for="select-probability">Select Probability</label>
       <select id="select-probability">
         <option value="Local">Local</option>
@@ -88,22 +89,24 @@
       <br>
       <label for="gm-count">Global Count</label>
       <input id="gm-count" type="number" value="10" step="1" min="0" size="5">
-    </div>
-    <div id="calculate-probability" class="tabs-button">
-      Calculate Probability
-    </div>
-    <div id="progress-div" style="display: none;">
-      <progress id="subsystem-progress" value="0"></progress>
-      <progress id="calculate-progress" value="0"></progress>
+      <br>
+      <label for="show-results-check">Show Matrix Results</label>
+      <input type="checkbox" id="show-results-check">
     </div>
     <div id="results-tab-button" class="tabs-button" data-tab="results-tab">
-      Probability Results
+      Matrix Results
     </div>
     <div id="clear-probability-button" class="tabs-button">
       Clear Results
     </div>
     <div id="clear-all-button" class="tabs-button">
       Clear All Tiles
+    </div>
+    <div class="tabs-button" data-tab="patterns-tab">
+      Minesweeper Patterns
+    </div>
+    <div class="tabs-button" data-tab="probability-tab">
+      Math Explanation
     </div>
     <div class="tabs-button">
       <a href="https://github.com/CornSnek/minesweeper_probability_calculator" target="_blank"
@@ -128,10 +131,13 @@
         to find all possible solutions.<br><br>For each valid solution, each id number is assigned 0 (no mine) or 1
         (mine).<br><br>
         The probability is calculated depending on the option that you have chosen (Local or Global Probability).<br><br>
-        See the Probability Results tab to see an example of the matrix calculations in action.<br><br>
+        See the Matrix Results tab to see an example of the matrix calculations in action.<br><br>
         Note: If you recalculate the same board, the data of the calculation will not be changed, meaning that you can see Local / Global Probability calculations from the same board without waiting for the calculation to complete multiple times.
         <br><br>
         Once the probability is calculated, you can click on adjacent tiles to see the calculations of the total number of solutions, and the frequency of solutions s that have m number of mines. This shows the frequencies per tile and per board/system.
+        <br><br>
+        This website can also parse screenshots of minesweeper boards. To try this feature, drag a minesweeper screenshot, input the width of the board and crop only the board available, and press 'Parse Screenshot'.
+        <br>Note: If you properly cropped the picture, it may still be inaccurate in its predictions, so you will have to check your screenshot for any incorrect tiles. 
       </div>
     </div>
     <div id="probability-tab" class="options-gui panel-hide-right">
@@ -566,7 +572,7 @@
             \end{array}
           \]
           It should be noted that 16 + 120 + 144 = 280, the total number of solutions of 1-1-1 and 2-3-2 board systems combined.
-          <br> The numbers can be verified by checking the Probability Results tab of the Whole System.
+          <br> The numbers can be verified by checking the Matrix Results tab of the Whole System.
           <br><br>
           To get the total number of solutions per mine number of a tile, it is similar to the calculation above.
           <br>
@@ -910,8 +916,8 @@
         <a href="#" class="close-options-panel"><strong class="badge">Close</strong></a>
       </div>
       <br>
-      <div id="probability-results-text">
-        Results are shown after clicking 'Probability Results'
+      <div id="matrix-results-text">
+        Results are shown after clicking 'Matrix Results'
       </div>
     </div>
   </div>
@@ -925,8 +931,9 @@
         class="badge">D</strong> to move the select region by 1 tile.
       You can hover over each tile below for its description. You can also use keys on each tile below to add to the
       board. <strong class="badge">Ctrl</strong>+<strong class="badge">C</strong>,
-      <strong class="badge">Ctrl</strong>+<strong class="badge">X</strong>, and
-      <strong class="badge">Ctrl</strong>+<strong class="badge">V</strong> can be used to copy, cut, and paste tile data
+      <strong class="badge">Ctrl</strong>+<strong class="badge">X</strong>,
+      <strong class="badge">Ctrl</strong>+<strong class="badge">V</strong>, and
+      <strong class="badge">Ctrl</strong>+<strong class="badge">Z</strong> can be used to copy, cut, paste, and undo tile data
       respectively.
       <label for="flood-fill"><b>Hold Down <strong class="badge">Shift</strong> to Flood Fill</b></label>
       <input type="checkbox" id="flood-fill">

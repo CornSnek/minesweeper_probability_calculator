@@ -49,6 +49,4 @@ The file is then placed into the `www` folder to be used by ONNX Runtime.
 
 
 ## TODO
-- Cleanup/format pages.
-- Add states when uploading/calculating so that certain buttons and popups are disabled.
-- Add undo functionality (Probably just 1 undo state).
+- Have right tab pages to always have the close button appear on the top right or bottom right.

@@ -7,8 +7,6 @@ let WasmObj = null;
 let WasmExports = null;
 let calculate_worker = null;
 const WasmMemory = new WebAssembly.Memory({ initial: 20, maximum: 65536, shared: true });
-const TD = new TextDecoder();
-const TE = new TextEncoder();
 let grid_body = null;
 let tiles_palette;
 let tile_description;
@@ -20,7 +18,7 @@ let generate_grid;
 let calculate_probability;
 let clear_probability_button;
 let clear_all_button;
-let probability_results_text;
+let matrix_results_text;
 let show_results_check;
 let progress_div;
 let calculate_progress;
@@ -37,8 +35,40 @@ let columns = null;
 let keybind_map = new Map();
 let shift_key_down = false;
 let ctrl_key_down = false;
-let is_calculating = false;
+const STATE_IDLE = 0;
+const STATE_CALCULATING = 1;
+const STATE_UPLOAD = 2;
+let web_state = STATE_IDLE;
 let tile_colors = {};
+class UndoNode {
+    constructor(x, y, ms_type) {
+        this.x = x;
+        this.y = y;
+        this.ms_type = ms_type;
+    }
+}
+class UndoQueue {
+    static SIZE = 100;
+    constructor() {
+        this.buf = new Array(UndoQueue.SIZE).fill(null);
+        this.next = 0;
+    }
+    push_undo(undo_node_arr) {
+        this.buf[this.next] = undo_node_arr;
+        this.next = (this.next + 1) % UndoQueue.SIZE;
+    }
+    pop_undo() {
+        this.next = (UndoQueue.SIZE - 1 + this.next) % UndoQueue.SIZE;
+        const undo_node_ret = this.buf[this.next];
+        this.buf[this.next] = null;
+        return undo_node_ret;
+    }
+    clear() {
+        this.buf.fill(null);
+        this.next = 0;
+    }
+}
+const undo_queue = new UndoQueue();
 function do_print(str, print_type) {
     if (print_type === PrintType.log) {
         console.log(str);
@@ -103,10 +133,11 @@ async function init() {
     columns_num = document.getElementById('columns-num');
     rows_num = document.getElementById('rows-num');
     generate_grid = document.getElementById('generate-grid');
+    parse_screenshot_popup = document.getElementById('parse-screenshot-popup');
     calculate_probability = document.getElementById('calculate-probability');
     clear_probability_button = document.getElementById('clear-probability-button');
     clear_all_button = document.getElementById('clear-all-button');
-    probability_results_text = document.getElementById('probability-results-text');
+    matrix_results_text = document.getElementById('matrix-results-text');
     show_results_check = document.getElementById('show-results-check');
     calculate_progress = document.getElementById('calculate-progress');
     subsystem_progress = document.getElementById('subsystem-progress');
@@ -189,6 +220,9 @@ async function init() {
             } else if (e.key == 'Control') {
                 ctrl_key_down = true;
             } else {
+                if (shift_key_down)
+                    if (e.key == 'Enter')
+                        calculate_probability_f(e);
                 if (ctrl_key_down) {
                     switch (e.key) {
                         case 'c':
@@ -196,6 +230,15 @@ async function init() {
                             break;
                         case 'x':
                             selected_tile.copy_text_clipboard(true);
+                            break;
+                        case 'z':
+                            if (web_state != STATE_IDLE) break;
+                            const undo_node_arr = undo_queue.pop_undo();
+                            if (undo_node_arr !== null) {
+                                for (const un of undo_node_arr)
+                                    set_tile(un.x, un.y, un.ms_type);
+                            } else flash_message(FLASH_ERROR, 'Unable to Undo', 1000);
+                            break;
                     }
                 } else {
                     const fn = keybind_map.get(unshift_key(e.key));
@@ -225,27 +268,24 @@ async function init() {
     columns_num.onclick = deselect_tiles_f;
     gm_count.onclick = deselect_tiles_f;
     generate_grid.onclick = e => {
-        if (is_calculating) return;
+        if (web_state != STATE_IDLE) return;
         if (confirm('Are you sure? This will clear all tiles.')) {
             init_grid(parseInt(columns_num.value), parseInt(rows_num.value));
         }
     };
-    calculate_probability.onclick = e => {
-        if (!is_calculating) {
-            hide_flash();
-            start_progress();
+    calculate_probability.onclick = calculate_probability_f;
+    parse_screenshot_popup.onclick = async e => {
+        if (web_state == STATE_IDLE) {
             deselect_tiles_f();
-            calculate_worker.postMessage(['f', 'CalculateProbability']);
-            SetTimeoutProgress(0, 0.0);
-            calculate_probability.textContent = 'Cancel Calculation';
-        } else {
-            Atomics.store(new Uint8Array(WasmMemory.buffer), WasmExports.CancelCalculation.value, 1);
-            flash_message(FLASH_ERROR, 'Cancelled Calculation');
+            hide_any_right_panels(e);
+            disable_upload_sliders(true);
+            upload_output.textContent = '';
+            show_upload_body();
         }
-    };
+    }
     clear_probability_button.onclick = clear_all_probability;
     clear_all_button.onclick = e => {
-        if (is_calculating) return;
+        if (web_state != STATE_IDLE) return;
         if (confirm('Are you sure? This will clear all tiles.'))
             init_grid(parseInt(columns_num.value), parseInt(rows_num.value))
     };
@@ -292,6 +332,7 @@ async function init() {
     cancel_parse_screenshot.onclick = () => {
         parse_screenshot.disabled = true;
         upload_body.style.display = 'none';
+        web_state = STATE_IDLE;
     }
     gm_count.disabled = select_probability.value !== 'Global';
     console.log('Waiting for KaTeX module...');
@@ -371,6 +412,7 @@ document.addEventListener('DOMContentLoaded', init);
 function init_grid(num_columns, num_rows) {
     console.assert(num_columns > 0 && num_rows > 0, 'num_columns and num_rows should be greater than 0');
     deselect_tiles_f();
+    undo_queue.clear();
     rows = num_rows;
     columns = num_columns;
     WasmExports.CreateGrid(num_columns, num_rows);
@@ -386,7 +428,7 @@ function init_grid(num_columns, num_rows) {
         div.dataset.y = y;
         div.dataset.ms_type = MsType.unknown;
         div.onclick = e => {
-            if (is_calculating) return;
+            if (web_state != STATE_IDLE) return;
             tile_select_f.bind(new SelectedTile({
                 t: SelectedTile.One, p: new TilePoint(div.dataset.x, div.dataset.y)
             }))(e);
@@ -703,9 +745,15 @@ function tile_select_any_f(e) {
     keybind_map.set('Delete', assign_selected_f.bind({ tile: MsType.unknown, selected_tile }));
 }
 function assign_selected_f() {
+    const undo_node_arr = [];
     if (!flood_fill.checked) {
-        for (const div of this.selected_tile.get_div_array())
-            set_tile(parseInt(div.dataset.x), parseInt(div.dataset.y), this.tile);
+        for (const div of this.selected_tile.get_div_array()) {
+            const x = parseInt(div.dataset.x);
+            const y = parseInt(div.dataset.y);
+            const old_type = WasmExports.QueryTile(x, y);
+            undo_node_arr.push(new UndoNode(x, y, old_type));
+            set_tile(x, y, this.tile);
+        }
     } else {
         for (const div of this.selected_tile.get_div_array()) {
             const i_set_visited = new Set();
@@ -723,6 +771,7 @@ function assign_selected_f() {
                 const this_y = Math.floor(this_i / columns);
                 const cmp_mstype = WasmExports.QueryTile(this_x, this_y);
                 if (cmp_mstype !== to_fill_mstype) continue;
+                undo_node_arr.push(new UndoNode(this_x, this_y, cmp_mstype));
                 set_tile(this_x, this_y, this.tile);
                 if (this_x + 1 !== columns) {
                     const ri = this_y * columns + (this_x + 1);
@@ -743,6 +792,7 @@ function assign_selected_f() {
             }
         }
     }
+    undo_queue.push_undo(undo_node_arr);
 }
 function deselect_tiles_f(e) {
     tile_gui.classList.remove('panel-show');
@@ -787,6 +837,20 @@ function update_tile(x, y) {
     const ms_type = WasmExports.QueryTile(x, y);
     div.dataset.ms_type = ms_type;
     update_tile_div(div, true);
+}
+const shift_p_enter = '<strong class="badge">Shift</strong>+<strong class="badge">Enter</strong>';
+function calculate_probability_f(e) {
+    if (web_state == STATE_IDLE) {
+        hide_flash();
+        start_progress();
+        deselect_tiles_f();
+        calculate_worker.postMessage(['f', 'CalculateProbability']);
+        SetTimeoutProgress(0, 0.0);
+        calculate_probability.innerHTML = `Cancel Calculation ${shift_p_enter}`;
+    } else if (web_state == STATE_CALCULATING) {
+        Atomics.store(new Uint8Array(WasmMemory.buffer), WasmExports.CancelCalculation.value, 1);
+        flash_message(FLASH_ERROR, 'Cancelled Calculation');
+    }
 }
 function clear_all_probability() {
     document.querySelectorAll('[data-probability]').forEach(clear_probability);
@@ -1158,17 +1222,17 @@ function parse_probability_list(c_arr_ptr) {
     }
 }
 function ClearResults() {
-    probability_results_text.innerHTML = 'Probability Results<br><br>';
+    matrix_results_text.innerHTML = 'Probability Results<br><br>';
 }
 function AppendResults(string) {
-    probability_results_text.innerHTML += string;
+    matrix_results_text.innerHTML += string;
 }
 function FinalizeResults() {
-    renderMathInElement(probability_results_text);
+    renderMathInElement(matrix_results_text);
 }
 let debounce_timeout = false;
 function start_progress() {
-    is_calculating = true;
+    web_state = STATE_CALCULATING;
     progress_div.style.display = 'initial';
 }
 function SetSubsystemNumber(subsystems) {
@@ -1180,16 +1244,16 @@ function SetTimeoutProgress(subsystem_id, progress) {
     setTimeout(() => {
         Atomics.store(new Uint8Array(WasmMemory.buffer), WasmExports.CalculateStatus.value, 1);
         debounce_timeout = false;
-        renderMathInElement(probability_results_text);
+        renderMathInElement(matrix_results_text);
     }, 1000);
     subsystem_progress.value = subsystem_id + 1;
     calculate_progress.value = progress;
 }
 function end_progress() {
-    is_calculating = false;
+    web_state = STATE_IDLE;
     calculate_progress.value = 1;
     progress_div.style.display = 'none';
-    calculate_probability.textContent = 'Calculate Probability';
+    calculate_probability.innerHTML = `Calculate Probability ${shift_p_enter}`;
 }
 function create_board_pattern(div_parent, num_columns, tile_string) {
     div_parent.classList.add('tile-template');
@@ -1262,6 +1326,7 @@ function color_lerp(color1, color2, percent) {
     return `rgb(${nr}, ${ng}, ${nb})`;
 }
 let upload_body;
+let parse_screenshot_popup;
 let canvas_tile;
 let canvas_screenshot;
 let parse_screenshot;
@@ -1273,6 +1338,7 @@ document.addEventListener('dragover', e => {
     e.preventDefault();
     parse_screenshot.disabled = true;
     upload_body.style.display = 'block';
+    disable_upload_sliders(true);
 });
 document.addEventListener('drop', async e => {
     e.preventDefault();
@@ -1291,15 +1357,28 @@ img_screenshot.onload = () => {
     crop_right.value = 0;
     crop_up.value = 0;
     crop_down.value = 0;
-    board_width_size.value = 1;
+    board_width_size.value = 10;
+    disable_upload_sliders(false);
+    web_state = STATE_UPLOAD;
     show_crop();
 }
+function disable_upload_sliders(b) {
+    crop_left.disabled = b;
+    crop_right.disabled = b;
+    crop_up.disabled = b;
+    crop_down.disabled = b;
+    board_width_size.disabled = b;
+}
 async function show_upload_body(file) {
+    web_state = STATE_UPLOAD;
     upload_body.style.display = 'block';
     deselect_tiles_f();
     hide_any_right_panels();
     if (flood_fill.checked) flood_fill.checked = false;
-    img_screenshot.src = URL.createObjectURL(file);
+    canvas_screenshot.width = 0;
+    canvas_screenshot.height = 0;
+    if (file !== undefined)
+        img_screenshot.src = URL.createObjectURL(file);
 }
 let crop_left;
 let crop_right;
@@ -1342,6 +1421,7 @@ function show_crop() {
     if (cl + cr >= img_screenshot.width || cu + cd >= img_screenshot.height) {
         flash_message(FLASH_ERROR, 'Crop size must be less than the size of the image.', 3000);
         upload_output.textContent = '';
+        return;
     }
     parse_screenshot.disabled = false;
 }
@@ -1371,6 +1451,7 @@ async function pre_parse_screenshot_board() {
     parse_screenshot.disabled = true;
     await parse_screenshot_board(img_rows, img_columns, tile_pixel_size, cl, cu);
     upload_body.style.display = 'none';
+    web_state = STATE_IDLE;
 }
 async function parse_screenshot_board(img_rows, img_columns, tile_pixel_size, cl, cu) {
     if (!session) session = await ort.InferenceSession.create('model.onnx');

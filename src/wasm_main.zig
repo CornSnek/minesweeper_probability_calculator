@@ -128,10 +128,15 @@ export fn CalculateProbability() [*c]shared.CalculateArray {
         cmp_calculate_str = mp.as_str(wasm_allocator) catch return 0;
     } else return 0;
     defer wasm_allocator.free(cmp_calculate_str);
-    if (last_calculate_str) |lcstr| {
-        if (std.mem.eql(u8, lcstr, cmp_calculate_str)) {
-            calculate_array.recalculated = false;
-            return &calculate_array; //If the same board, just return the same pointer without recalculation.
+    if (calculate_array.status == .ok) {
+        for (calculate_array.ptr[0..calculate_array.len]) |*calc| {
+            if (calc.status == .cancelled)
+                break; //If calculation was cancelled previously, reenable recalculating again ('else if' block doesn't run).
+        } else if (last_calculate_str) |lcstr| {
+            if (std.mem.eql(u8, lcstr, cmp_calculate_str)) {
+                calculate_array.recalculated = false;
+                return &calculate_array; //If the same board, just return the same pointer without recalculation.
+            }
         }
     }
     calculate_array.deinit(wasm_allocator);
