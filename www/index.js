@@ -31,6 +31,7 @@ let select_probability;
 let gm_count;
 let patterns_list;
 let patterns_table_of_contents;
+let flood_fill;
 let rows = null;
 let columns = null;
 let keybind_map = new Map();
@@ -116,6 +117,18 @@ async function init() {
     gm_count = document.getElementById('gm-count');
     patterns_list = document.getElementById('patterns-list');
     patterns_table_of_contents = document.getElementById('patterns-table-of-contents');
+    flood_fill = document.getElementById('flood-fill');
+    upload_body = document.getElementById('upload-body');
+    crop_left = document.getElementById('crop-left');
+    crop_right = document.getElementById('crop-right');
+    crop_up = document.getElementById('crop-up');
+    crop_down = document.getElementById('crop-down');
+    canvas_tile = document.getElementById('canvas-tile');
+    canvas_screenshot = document.getElementById('canvas-screenshot');
+    parse_screenshot = document.getElementById('parse-screenshot');
+    cancel_parse_screenshot = document.getElementById('cancel-parse-screenshot');
+    board_width_size = document.getElementById('board-width-size');
+    upload_output = document.getElementById('upload-output');
     const root_comp = getComputedStyle(document.documentElement);
     tile_colors.neutral = root_comp.getPropertyValue('--ms-probability');
     tile_colors.mine = root_comp.getPropertyValue('--ms-probability-mine');
@@ -151,10 +164,28 @@ async function init() {
     WasmObj = wasm_obj;
     WasmExports = wasm_obj.instance.exports;
     init_grid(parseInt(columns_num.value), parseInt(rows_num.value));
+    const UnshiftNums = new Map(
+        [
+            ['!', '1'],
+            ['@', '2'],
+            ['#', '3'],
+            ['$', '4'],
+            ['%', '5'],
+            ['^', '6'],
+            ['&', '7'],
+            ['*', '8'],
+            ['(', '9'],
+            [')', '0']
+        ])
+        ;
+    function unshift_key(ch) { ///For keybind_map because holding Shift capitalizes or replaces the letter for e.key
+        return UnshiftNums.get(ch) ?? (ch.length === 1 ? ch.toLowerCase() : ch)
+    }
     document.addEventListener('keydown', e => {
         if (!e.repeat) {
             if (e.key == 'Shift') {
                 shift_key_down = true;
+                flood_fill.checked = true;
             } else if (e.key == 'Control') {
                 ctrl_key_down = true;
             } else {
@@ -167,8 +198,10 @@ async function init() {
                             selected_tile.copy_text_clipboard(true);
                     }
                 } else {
-                    const fn = keybind_map.get(e.key);
-                    if (fn !== undefined) fn(e);
+                    const fn = keybind_map.get(unshift_key(e.key));
+                    if (fn !== undefined) {
+                        fn(e);
+                    }
                 }
             }
         }
@@ -176,6 +209,7 @@ async function init() {
     document.addEventListener('keyup', e => {
         if (e.key == 'Shift') {
             shift_key_down = false;
+            flood_fill.checked = false;
         } else if (e.key == 'Control') {
             ctrl_key_down = false;
         }
@@ -245,6 +279,20 @@ async function init() {
         gm_count.disabled = prob_type !== 'Global';
         flash_message(FLASH_SUCCESS, (prob_type !== 'Global') ? 'Local shows only the probability for adjacent tiles' : 'Global shows the probability of the whole board, where Mine Count is considered', 5000);
     };
+    parse_screenshot.onclick = pre_parse_screenshot_board;
+    crop_left.onchange = delay_show_crop;
+    crop_left.onclick = delay_show_crop;
+    crop_right.onchange = delay_show_crop;
+    crop_right.onclick = delay_show_crop;
+    crop_up.onchange = delay_show_crop;
+    crop_up.onclick = delay_show_crop;
+    crop_down.onchange = delay_show_crop;
+    crop_down.onclick = delay_show_crop;
+    board_width_size.onchange = delay_show_crop;
+    cancel_parse_screenshot.onclick = () => {
+        parse_screenshot.disabled = true;
+        upload_body.style.display = 'none';
+    }
     gm_count.disabled = select_probability.value !== 'Global';
     console.log('Waiting for KaTeX module...');
     wait_katex();
@@ -252,7 +300,7 @@ async function init() {
 const FLASH_ERROR = 0;
 const FLASH_SUCCESS = 1;
 let last_flash_timer = null;
-function flash_message(type, message, hide_seconds) {
+function flash_message(type, message, hide_ms) {
     if (last_flash_timer !== null) {
         clearTimeout(last_flash_timer);
         last_flash_timer = null;
@@ -268,8 +316,8 @@ function flash_message(type, message, hide_seconds) {
     } else {
         console.err('Invalid flash_message type');
     }
-    if (hide_seconds !== undefined) {
-        last_flash_timer = setTimeout(hide_flash, hide_seconds);
+    if (hide_ms !== undefined) {
+        last_flash_timer = setTimeout(hide_flash, hide_ms);
     }
 }
 function hide_flash() {
@@ -579,6 +627,7 @@ function tile_select_f(e) {
     hide_flash();
     console.assert(this instanceof SelectedTile, "The this instance should be SelectedTile");
     if (selected_tile.type != SelectedTile.None && shift_key_down) {
+        flood_fill.checked = false;
         //Get region based on the top left corner and the clicked tile (this)
         const points_array = [new TilePoint(this.select.x, this.select.y)];
         switch (selected_tile.type) {
@@ -649,13 +698,50 @@ function tile_select_any_f(e) {
     keybind_map.set('d', right_f);
     for (const [ch, tile] of ch_to_tile_enum) {
         console.assert(keybind_map.get(ch) === undefined, `Warning: Overwriting keybind_map function '${ch}'`);
-        keybind_map.set(ch, assign_selected_f.bind({ tile: tile, selected_tile }));
+        keybind_map.set(ch, assign_selected_f.bind({ tile, selected_tile }));
     }
     keybind_map.set('Delete', assign_selected_f.bind({ tile: MsType.unknown, selected_tile }));
 }
 function assign_selected_f() {
-    for (const div of this.selected_tile.get_div_array()) {
-        set_tile(parseInt(div.dataset.x), parseInt(div.dataset.y), this.tile);
+    if (!flood_fill.checked) {
+        for (const div of this.selected_tile.get_div_array())
+            set_tile(parseInt(div.dataset.x), parseInt(div.dataset.y), this.tile);
+    } else {
+        for (const div of this.selected_tile.get_div_array()) {
+            const i_set_visited = new Set();
+            const stack_i = [];
+            const x = parseInt(div.dataset.x);
+            const y = parseInt(div.dataset.y);
+            const i = y * columns + x;
+            const to_fill_mstype = WasmExports.QueryTile(x, y);
+            stack_i.push(i);
+            while (stack_i.length !== 0) {
+                const this_i = stack_i.pop();
+                if (i_set_visited.has(this_i)) continue;
+                i_set_visited.add(this_i);
+                const this_x = this_i % columns;
+                const this_y = Math.floor(this_i / columns);
+                const cmp_mstype = WasmExports.QueryTile(this_x, this_y);
+                if (cmp_mstype !== to_fill_mstype) continue;
+                set_tile(this_x, this_y, this.tile);
+                if (this_x + 1 !== columns) {
+                    const ri = this_y * columns + (this_x + 1);
+                    stack_i.push(ri);
+                }
+                if (this_x - 1 >= 0) {
+                    const li = this_y * columns + (this_x - 1);
+                    stack_i.push(li);
+                }
+                if (this_y + 1 !== rows) {
+                    const di = (this_y + 1) * columns + this_x;
+                    stack_i.push(di);
+                }
+                if (this_y - 1 >= 0) {
+                    const ui = (this_y - 1) * columns + this_x;
+                    stack_i.push(ui);
+                }
+            }
+        }
     }
 }
 function deselect_tiles_f(e) {
@@ -734,23 +820,23 @@ function get_default_tile_description() {
             let parse_state = START;
             let match;
             while ((match = map_regex.exec(status)) !== null) {
-                const m_str=match[1];
-                const f_str=match[2];
-                switch(parse_state){
+                const m_str = match[1];
+                const f_str = match[2];
+                switch (parse_state) {
                     case START:
-                        console.assert(m_str==='t', 'freq_a should start with t.');
+                        console.assert(m_str === 't', 'freq_a should start with t.');
                         td += `, ${f_str} total solution(s). Tile Mine Frequency [ `;
                         parse_state = TILE;
                         break;
                     case TILE:
-                        if(!m_str.endsWith('G')){
+                        if (!m_str.endsWith('G')) {
                             td += `(${f_str} s &rarr; ${m_str} m), `;
                             break;
                         }
                         parse_state = SYSTEM;
                         td += `] Board Mine Frequency [`
                     case SYSTEM:
-                        td += `(${f_str} s &rarr; ${m_str.slice(0,-1)} m), `;
+                        td += `(${f_str} s &rarr; ${m_str.slice(0, -1)} m), `;
                 }
             }
             td += ']';
@@ -1053,8 +1139,7 @@ function parse_probability_list(c_arr_ptr) {
         if (mfg_list.convolve_all()) {
             let total_num = 0n;
             if (mfg_list.global.length !== 0) {
-                console.log(ca_recalculated);
-                if (ca_recalculated===1 && mfg_list.global.length !== 1) {
+                if (ca_recalculated === 1 && mfg_list.global.length !== 1) {
                     AppendResults('Whole System<br>');
                     const first_map = mfg_list.global[0];
                     for (const [_, f] of first_map.map) {
@@ -1175,4 +1260,141 @@ function color_lerp(color1, color2, percent) {
     const ng = Math.round(g1 + (g2 - g1) * percent);
     const nb = Math.round(b1 + (b2 - b1) * percent);
     return `rgb(${nr}, ${ng}, ${nb})`;
+}
+let upload_body;
+let canvas_tile;
+let canvas_screenshot;
+let parse_screenshot;
+let cancel_parse_screenshot;
+let board_width_size;
+let upload_output;
+let session = null;
+document.addEventListener('dragover', e => {
+    e.preventDefault();
+    parse_screenshot.disabled = true;
+    upload_body.style.display = 'block';
+});
+document.addEventListener('drop', async e => {
+    e.preventDefault();
+    const files = e.dataTransfer.files;
+    if (files.length > 0) {
+        if (files[0] && files[0].type.startsWith("image/")) {
+            await show_upload_body(files[0]);
+        }
+    }
+});
+//Should be same order as image_ai/labels.py
+const class_labels = ['unknown', 'mine', 'flag', '0', '1', '2', '3', '4', '5', '6', '7', '8'];
+const img_screenshot = new Image();
+img_screenshot.onload = () => {
+    crop_left.value = 0;
+    crop_right.value = 0;
+    crop_up.value = 0;
+    crop_down.value = 0;
+    board_width_size.value = 1;
+    show_crop();
+}
+async function show_upload_body(file) {
+    upload_body.style.display = 'block';
+    deselect_tiles_f();
+    hide_any_right_panels();
+    if (flood_fill.checked) flood_fill.checked = false;
+    img_screenshot.src = URL.createObjectURL(file);
+}
+let crop_left;
+let crop_right;
+let crop_up;
+let crop_down;
+let crop_timer = null;
+function delay_show_crop() {
+    if (crop_timer !== null) {
+        clearTimeout(crop_timer);
+        crop_timer = null;
+    }
+    crop_timer = setTimeout(show_crop, 500);
+    parse_screenshot.disabled = true;
+}
+function show_crop() {
+    crop_timer = null;
+    const cl = parseInt(crop_left.value);
+    const cr = parseInt(crop_right.value);
+    const cu = parseInt(crop_up.value);
+    const cd = parseInt(crop_down.value);
+    canvas_screenshot.width = img_screenshot.width;
+    canvas_screenshot.height = img_screenshot.height;
+    const ctx = canvas_screenshot.getContext('2d');
+    ctx.clearRect(0, 0, img_screenshot.width, img_screenshot.height);
+    ctx.drawImage(img_screenshot, 0, 0, img_screenshot.width, img_screenshot.height);
+    ctx.fillStyle = 'rgba(0, 0, 0, 0.5)';
+    ctx.fillRect(0, 0, cl, img_screenshot.height - cd);
+    ctx.fillRect(cl, 0, img_screenshot.width - cl, cu);
+    ctx.fillRect(img_screenshot.width - cr, cu, cr, img_screenshot.height - cu);
+    ctx.fillRect(0, img_screenshot.height - cd, img_screenshot.width - cr, cd);
+    const img_columns = parseInt(board_width_size.value);
+    const tile_pixel_size = (img_screenshot.width - cl - cr) / img_columns;
+    const img_rows = Math.round((img_screenshot.height - cu - cd) / tile_pixel_size);
+    upload_output.textContent = `Calculating: ${img_columns} x ${img_rows} board with ${tile_pixel_size}px tile size.`;
+    if (img_rows > 100 || img_rows <= 0) {
+        flash_message(FLASH_ERROR, 'Detected invalid number of rows in screenshot. Must be from 1 to 100.');
+        upload_output.textContent = '';
+        return;
+    }
+    if (cl + cr >= img_screenshot.width || cu + cd >= img_screenshot.height) {
+        flash_message(FLASH_ERROR, 'Crop size must be less than the size of the image.', 3000);
+        upload_output.textContent = '';
+    }
+    parse_screenshot.disabled = false;
+}
+function tile_to_tensor(tile) {
+    const gray = new Float32Array(1 * 1 * 16 * 16);
+    for (let i = 0; i < 16 * 16; i++) {
+        const r = tile[i * 4];
+        const g = tile[i * 4 + 1];
+        const b = tile[i * 4 + 2];
+        const lum = (r + g + b) / 3 / 255;
+        gray[i] = (lum - 0.5) / 0.5;
+    }
+    return new ort.Tensor("float32", gray, [1, 1, 16, 16]);
+}
+///Inputs already checked/validated in show_crop.
+async function pre_parse_screenshot_board() {
+    const img_columns = parseInt(board_width_size.value);
+    const cl = parseInt(crop_left.value);
+    const cr = parseInt(crop_right.value);
+    const cu = parseInt(crop_up.value);
+    const cd = parseInt(crop_down.value);
+    const tile_pixel_size = (img_screenshot.width - cl - cr) / img_columns;
+    const img_rows = Math.round((img_screenshot.height - cu - cd) / tile_pixel_size);
+    columns_num.value = img_columns;
+    rows_num.value = img_rows;
+    init_grid(parseInt(img_columns), parseInt(img_rows));
+    parse_screenshot.disabled = true;
+    await parse_screenshot_board(img_rows, img_columns, tile_pixel_size, cl, cu);
+    upload_body.style.display = 'none';
+}
+async function parse_screenshot_board(img_rows, img_columns, tile_pixel_size, cl, cu) {
+    if (!session) session = await ort.InferenceSession.create('model.onnx');
+    const tile_ctx = canvas_tile.getContext('2d');
+    let tile_string = SelectedTile.ClipboardHeader;
+    for (let y = 0; y < img_rows; y++) {
+        for (let x = 0; x < img_columns; x++) {
+            const sx = x * tile_pixel_size;
+            const sy = y * tile_pixel_size;
+            tile_ctx.clearRect(0, 0, 16, 16);
+            tile_ctx.drawImage(img_screenshot, cl + sx, cu + sy, tile_pixel_size, tile_pixel_size, 0, 0, 16, 16);
+            const input_tensor = tile_to_tensor(tile_ctx.getImageData(0, 0, 16, 16).data);
+            const result = await session.run({ input: input_tensor });
+            const prediction = result.output.data;
+            const pred_class = prediction.indexOf(Math.max(...prediction));
+            const ms_type_str = class_labels[pred_class];
+            tile_string += MsType.$js_ch[MsType[ms_type_str]];
+        }
+        tile_string += ',';
+    }
+    tile_select_any_f.bind(new SelectedTile({
+        t: SelectedTile.One, p: new TilePoint(0, 0)
+    }))(undefined);
+    selected_tile.paste_text_clipboard(tile_string);
+    deselect_tiles_f(undefined);
+    flash_message(FLASH_SUCCESS, 'Completed parsing tiles from screenshot. Please check your screenshot for any incorrect tiles.', 5000);
 }

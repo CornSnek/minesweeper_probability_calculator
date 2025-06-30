@@ -193,7 +193,7 @@ a:hover{
     left: 0;
     right: 0;
     box-shadow: 0 2px 5px black;
-    z-index: 5;
+    z-index: 10;
     background-color: var(--bg-1);
     padding: 10px;
 }
@@ -265,4 +265,32 @@ a:hover{
     border-radius: 10px;
     flex: 1;
     padding: 0.5em;
+}
+
+#upload-body {
+    display: none;
+    position: absolute;
+    background-color: var(--bg-3);
+    width: 90%;
+    left: 5%;
+    height: 90%;
+    top: 5%;
+    z-index: 6;
+    box-shadow: 0px 0px 5px black;
+    padding: 10px;
+}
+
+#upload-container {
+    position: absolute;
+    width: calc(100% - 20px);
+    height: calc(100% - 40px);
+    display: grid;
+    grid-template-rows: 20% 60% 20%;
+    gap: 10px;
+}
+
+.upload-element {
+    padding: 10px;
+    background-color: var(--bg-1);
+    overflow: auto;
 }

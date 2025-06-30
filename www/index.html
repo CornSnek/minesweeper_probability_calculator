@@ -15,11 +15,44 @@
   <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.22/dist/contrib/auto-render.min.js"
     integrity="sha384-hCXGrW6PitJEwbkoStFjeJxv+fSOOQKOPbJxSfM6G5sWZjAyWhXiTIIAmQqnlLlh" crossorigin="anonymous"
     onload="renderMathInElement(document.body);"></script>
+  <script src="https://cdn.jsdelivr.net/npm/onnxruntime-web/dist/ort.min.js"></script>
   <script src="coi-serviceworker.js"></script>
   <script type="module" src="index.js"></script>
 </head>
 
 <body>
+  <canvas id="canvas-tile" style="display: none;" width="16" height="16"></canvas>
+  <div id="upload-body">
+    <div id="upload-container">
+      <div class="upload-element">
+        Drag minesweeper screenshots here to parse into this website. This will overwrite and change the row and columns.
+        <br><br>
+        Note: It may predict tiles incorrectly, so you will have to check your screenshot once it has been parsed.
+        <br><br>
+        You will have to crop only the minesweeper board and input the width for the tiles to be processed correctly.
+      </div>
+      <div class="upload-element">
+        <canvas id="canvas-screenshot"></canvas>
+      </div>
+      <div class="upload-element">
+          <label for="board-width-size">Board Width</label>
+          <input id="board-width-size" type="number" value="10" step="1" min="1" size="3">
+          <label for="crop-left">Crop Left</label>
+          <input id="crop-left" type="number" value="0" step="1" min="0" size="4">
+          <label for="crop-right">Crop Right</label>
+          <input id="crop-right" type="number" value="0" step="1" min="0" size="4">
+          <label for="crop-up">Crop Up</label>
+          <input id="crop-up" type="number" value="0" step="1" min="0" size="4">
+          <label for="crop-down">Crop Down</label>
+          <input id="crop-down" type="number" value="0" step="1" min="0" size="4">
+          <br>
+          <div id="upload-output"></div>
+          <br>
+          <button type="button" id="parse-screenshot" disabled>Parse Screenshot</button>
+          <button type="button" id="cancel-parse-screenshot">Cancel</button>
+      </div>
+    </div>
+  </div>
   <div id="flash-body">
     <div id="flash-content"></div>
   </div>
@@ -43,7 +76,7 @@
       <br>
       <button type="button" id="generate-grid">Generate</button>
       <br><br>
-      <label for="show-results-check>">Show Results When Done</label>
+      <label for="show-results-check">Show Results When Done</label>
       <input type="checkbox" id="show-results-check">
       <br><br>
       <label for="select-probability">Select Probability</label>
@@ -122,6 +155,7 @@
           <br>
           <br>
           To give an example on how to calculate them, consider this 5x5 board.
+          <!--If changing a key, use this regex (?<=data-str=)(".*?)[c](.*?") to change to $1d$2", to change c to d. Make sure the key is not the same or it will be overwritten.-->
           <div class="tile-template" data-ncolumns="5" data-str="ccccc,c111c,ccccc,ccccc,ccccc,"></div>
           <br>
           There are 14 possible solutions as shown below.
@@ -446,7 +480,7 @@
           <br><br>
           Let's define the whole system as \( G_G \) that descibes the set of the solutions for 1-1-1 and 2-3-2 together.
           <br><br>
-          In order to consider the number of solutions of the whole board and tile rather than the individual subsystems, we would have to count each solution from \( G_1 \) and \( G_2 \). By multiplying the valid number of solutions from \( G_1 \) and \( G_2 \).
+          In order to consider the number of solutions of the whole board and tile rather than the individual subsystems, we would have to count each solution from \( G_1 \) and \( G_2 \) by multiplying the valid number of solutions from \( G_1 \) and \( G_2 \).
           It seems there are (2+12) = 14 valid solutions for \( G_1 \) and (8+12) = 20 valid solutions for \( G_2 \). This means there are a total of 14*20 = 280 solutions that should be considered.
           For calculating the number of mines, it seems that there can be a minimum of (1+3) = 4 mines and a maximum of (2+4) = 6 mines. There can also be (2+3) = 5 mines as part of the solution too.
           <br><br>
@@ -726,6 +760,10 @@
               This pattern has a mine on the outer corner of the 3, and safe tiles on the corner of the 1s not touching
               the 3.
               <div class="tile-template" data-ncolumns="4" data-str="c.ccv.,x13c,xx1c,xxxc.,"></div>
+              <br>
+              The 1-3-1 corner can also have just have, in minimum, the 3 tiles itself. This can result in more safe tiles.
+              The reasoning is that the 2 mines between the 3 and 1s must be there.
+              <div class="tile-template" data-ncolumns="4" data-str="v.ccc.,c31c.,c1c.c.,c.c.c.c,"></div>
             </div>
           </li>
           <li id="patterns-222c">
@@ -747,6 +785,9 @@
               Note that the bottom X on the leftmost tile is not required for the right 3 tiles to be safe.
               <div class="tile-template" data-ncolumns="14"
                 data-str="xccc.cxccc.cxccc.,x11c.cx22c.cx33c.,xccc.cxccc.cxccc.,"></div>
+              <br>
+              This can be helpful when you have 2 length number tiles, both as either 1 or 2.
+              <data class="tile-template" data-ncolumns="7" data-str="c.c.c.v.c.c.c.,c11112c,c10002c,"></data>
             </div>
           </li>
           <li id="patterns-2d-112233-2">
@@ -764,7 +805,7 @@
               left. This makes the 4 adjacent tiles on the bottom and right safe.
               <br>
               Note: The 2D 1-1 can also be 2D 2-2 and 3-3 as well.
-              <div class="tile-template" data-ncolumns="5" data-str="xccxc,x11xc.,x1c1c.,x1cc.c.,"></div>
+              <div class="tile-template" data-ncolumns="5" data-str="xccxc,x11xc.,x1c1c.,xxcc.c.,"></div>
               <br>
               Here is another special case of a 2D 3-3, where the bottommost 2 tile (Of the 3 safe tiles) matches the 2
               tile on the left. This makes the 4 adjacent tiles on the bottom and right safe.
@@ -814,7 +855,7 @@
           <li id="patterns-disguised-1s">
             <h3>1-1-1 and 1-1-1-1</h3>
             <div>
-              Using the <b>Flag Number Reduction</b> pattern, these patterns are disguised, but behave similarly to the
+              Using the <b><a href="#patterns-fnr">Flag Number Reduction</a></b> pattern, these patterns are disguised, but behave similarly to the
               <b><a href="#patterns-121">1-2-1</a></b> and <b><a href="#patterns-1221">1-2-2-1</a></b> pattern. However, the mine and safe tiles for 1-2-1 and 1-2-2-1 are
               inversed for 1-1-1 and 1-1-1-1.
               <br>
@@ -832,7 +873,7 @@
               information to do the <b><a href="#patterns-fnr">Flag Number Reduction</a></b> pattern to use with other patterns.
               <br>
               <br>
-              For a simple example, the rightmost 2 tile must share at least 2 mines in the ? regions with the leftmost
+              For a simple example, the rightmost 2 tile must share 2 mines in the ? regions with the leftmost
               2 tile. Therefore, the leftmost 2 becomes a 0, thus the other adjacent tiles for the leftmost tile must be
               free due to the <b><a href="#patterns-atn0">Adjacent Tiles Near 0</a></b> pattern.
               <div class="tile-template" data-ncolumns="5" data-str="xxxxx,xxc?xx,c.2c?2x,c.c.c?xx,"></div>
@@ -842,6 +883,23 @@
               This makes the 2 tile be a 1 tile.<br>Due to these circumstances, this creates a <b><a href="#patterns-2d-112233">2D 1-1</a></b> pattern,
               allowing the top tiles on the topmost 1 tile to be safe.
               <div class="tile-template" data-ncolumns="5" data-str="ccc.c.c.,ccc1x,ccc2x,cxc?c?x,xf21x,xxxxx,"></div>
+              <br>
+              Here is another example. For the 2 next to the flag, this becomes a 1. This makes a region where a mine exists below.
+              The rightmost 2 then becomes a 1, thus creating a <b><a href="#patterns-121">1-2-1</a></b> pattern.
+            </div>
+          </li>
+          <li id="patterns-contradiction">
+            <h3>Proof By Contradiction</h3>
+            <div>
+              Sometimes, you might have to assume a tile is a mine or safe. If the assumption contradicts for all solutions possible, then the tile must be the opposite of the assumption instead.
+              <br>
+              Here is an example of proof by contradiction.
+              <div class="tile-template" data-ncolumns="6" data-str="cxxffc,ff4c(1)fx,xf5c(2)3x,xfc(3)2fx,xxcxxx,"></div>
+              <br>
+              Let's assume that tile (2) is a mine tile. This makes tile (1) and (3) safe tiles. However, a contradiction happens because the 5 tile has only 4 flags and is underflagged.
+              Due to this, (2) must be a safe tile instead as shown below. This also causes (1) and (3) to be mine tiles instead.
+              <div class="tile-template" data-ncolumns="6" data-str="cxxffc,ff4v.fx,xf5c.3x,xfv.2fx,xxc.xxx,"></div>
+              <!--ms-clipboard-data:ccccfxxxcc,cccxf32fxc,xxxx3cc3fx,111xfccc3x,cc1cc2cc3f,11112234fx,xxxxxfc3ff,ccccxfc2xc,-->
             </div>
           </li>
         </ul>
@@ -870,6 +928,8 @@
       <strong class="badge">Ctrl</strong>+<strong class="badge">X</strong>, and
       <strong class="badge">Ctrl</strong>+<strong class="badge">V</strong> can be used to copy, cut, and paste tile data
       respectively.
+      <label for="flood-fill"><b>Hold Down <strong class="badge">Shift</strong> to Flood Fill</b></label>
+      <input type="checkbox" id="flood-fill">
     </div>
     <div id="tiles-palette-container">
       <div id="tiles-palette"></div>
