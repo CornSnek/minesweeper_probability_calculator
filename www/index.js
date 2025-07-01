@@ -194,7 +194,7 @@ async function init() {
     });
     WasmObj = wasm_obj;
     WasmExports = wasm_obj.instance.exports;
-    init_grid(parseInt(columns_num.value), parseInt(rows_num.value));
+    init_grid(Math.min(parseInt(columns_num.value), 100), Math.min(parseInt(rows_num.value), 100));
     const UnshiftNums = new Map(
         [
             ['!', '1'],
@@ -232,7 +232,10 @@ async function init() {
                             selected_tile.copy_text_clipboard(true);
                             break;
                         case 'z':
+                            if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA' || e.target.isContentEditable) break;
+                            e.preventDefault();
                             if (web_state != STATE_IDLE) break;
+                            console.log(e.target.tagName, e.target.isContentEditable);
                             const undo_node_arr = undo_queue.pop_undo();
                             if (undo_node_arr !== null) {
                                 for (const un of undo_node_arr) {
