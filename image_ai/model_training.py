@@ -5,9 +5,10 @@ from torch.utils.data import DataLoader, random_split
 import torch.optim
 
 random_transforms = transforms.Compose([
-    transforms.Resize((16,16)),
-    transforms.ColorJitter(brightness=0.25, contrast=0.25, saturation=0.25, hue=0.25),
+    transforms.Resize((32,32)),
+    transforms.ColorJitter(brightness=0.125, contrast=0.125, saturation=0.125, hue=0.125),
     transforms.RandomInvert(),
+    transforms.RandomAffine(degrees=0,translate=(0.125,0.125)),
     transforms.Grayscale(),
     transforms.ToTensor(),
     transforms.Normalize([0.5], [0.5]),
@@ -15,7 +16,7 @@ random_transforms = transforms.Compose([
 
 import cnn
 model = cnn.CNNClassifier()
-optimizer = torch.optim.SGD(model.parameters(), lr=0.03, momentum=0.9, weight_decay=1e-5, nesterov=True)
+optimizer = torch.optim.SGD(model.parameters(), lr=0.01, momentum=0.9, weight_decay=1e-5, nesterov=True)
 scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(
     optimizer,
     mode='min',

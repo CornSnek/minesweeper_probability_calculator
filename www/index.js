@@ -174,7 +174,7 @@ async function init() {
             container_div.appendChild(image_div);
             image_div.classList.add('tile');
             image_div.dataset.ms_type = ms_type;
-            image_div.onclick = assign_selected_f.bind({ tile: MsType[tile_name], selected_tile });
+            image_div.onclick = assign_selected_f.bind({ tile: MsType[tile_name], selected_tile, set_undo_buffer: true });
             image_div.onmouseenter = () => {
                 image_div.classList.add('tile-hovered');
                 tile_description.textContent = MsType.$description[MsType[tile_name]];
@@ -235,8 +235,9 @@ async function init() {
                             if (web_state != STATE_IDLE) break;
                             const undo_node_arr = undo_queue.pop_undo();
                             if (undo_node_arr !== null) {
-                                for (const un of undo_node_arr)
+                                for (const un of undo_node_arr) {
                                     set_tile(un.x, un.y, un.ms_type);
+                                }
                             } else flash_message(FLASH_ERROR, 'Unable to Undo', 1000);
                             break;
                     }
@@ -594,6 +595,7 @@ class SelectedTile {
     copy_text_clipboard(clear_data) {
         console.assert(grid_body != null, 'grid_body must not be null');
         let copy_data = SelectedTile.ClipboardHeader;
+        const undo_node_arr = [];
         if (this.type == SelectedTile.One) {
             const div = grid_body.children[this.select.y * columns + this.select.x];
             copy_data += MsType.$js_ch[div.dataset.ms_type] + ',';
@@ -603,14 +605,17 @@ class SelectedTile {
                     const div = grid_body.children[j * columns + i];
                     copy_data += MsType.$js_ch[div.dataset.ms_type];
                     if (clear_data)
-                        assign_selected_f.bind({
+                        undo_node_arr.push(...assign_selected_f.bind({
                             tile: MsType.unknown, selected_tile: new SelectedTile({
                                 t: SelectedTile.One, p: new TilePoint(i, j)
                             })
-                        })();
+                        })());
                 }
                 copy_data += ',';
             }
+        }
+        if (undo_node_arr.length !== 0) {
+            undo_queue.push_undo(undo_node_arr);
         }
         navigator.clipboard.writeText(copy_data).catch(err => console.warn('Clipboard copy failed: ' + err));
     }
@@ -630,15 +635,16 @@ class SelectedTile {
             }
             let tp_old_x = tp.x;
             let tp_old_y = tp.y;
+            const undo_node_arr = []
             for (let ch_i = 0; ch_i < pasted_text.length; ch_i++) {
                 let tile_enum;
                 if ((tile_enum = ch_to_tile_enum.get(pasted_text[ch_i])) !== undefined) {
                     if (tp.x < columns && tp.y < rows) {
-                        assign_selected_f.bind({
+                        undo_node_arr.push(...assign_selected_f.bind({
                             tile: tile_enum, selected_tile: new SelectedTile({
                                 t: SelectedTile.One, p: new TilePoint(tp.x, tp.y)
                             })
-                        })();
+                        })());
                         tp_end = new TilePoint(tp.x, tp.y);
                     }
                 }
@@ -647,6 +653,7 @@ class SelectedTile {
                     tp.x = tp_old_x;
                 } else tp.x += 1;
             }
+            undo_queue.push_undo(undo_node_arr);
             //Show select region after pasting
             if (tp_old_x == tp_end.x && tp_old_y == tp_end.y) {
                 tile_select_f.bind(new SelectedTile({
@@ -740,9 +747,9 @@ function tile_select_any_f(e) {
     keybind_map.set('d', right_f);
     for (const [ch, tile] of ch_to_tile_enum) {
         console.assert(keybind_map.get(ch) === undefined, `Warning: Overwriting keybind_map function '${ch}'`);
-        keybind_map.set(ch, assign_selected_f.bind({ tile, selected_tile }));
+        keybind_map.set(ch, assign_selected_f.bind({ tile, selected_tile, set_undo_buffer: true }));
     }
-    keybind_map.set('Delete', assign_selected_f.bind({ tile: MsType.unknown, selected_tile }));
+    keybind_map.set('Delete', assign_selected_f.bind({ tile: MsType.unknown, set_undo_buffer: true }));
 }
 function assign_selected_f() {
     const undo_node_arr = [];
@@ -792,7 +799,8 @@ function assign_selected_f() {
             }
         }
     }
-    undo_queue.push_undo(undo_node_arr);
+    if (this.set_undo_buffer !== undefined) undo_queue.push_undo(undo_node_arr);
+    return undo_node_arr;
 }
 function deselect_tiles_f(e) {
     tile_gui.classList.remove('panel-show');
@@ -1426,15 +1434,15 @@ function show_crop() {
     parse_screenshot.disabled = false;
 }
 function tile_to_tensor(tile) {
-    const gray = new Float32Array(1 * 1 * 16 * 16);
-    for (let i = 0; i < 16 * 16; i++) {
+    const gray = new Float32Array(1 * 1 * 32 * 32);
+    for (let i = 0; i < 32 * 32; i++) {
         const r = tile[i * 4];
         const g = tile[i * 4 + 1];
         const b = tile[i * 4 + 2];
         const lum = (r + g + b) / 3 / 255;
         gray[i] = (lum - 0.5) / 0.5;
     }
-    return new ort.Tensor("float32", gray, [1, 1, 16, 16]);
+    return new ort.Tensor("float32", gray, [1, 1, 32, 32]);
 }
 ///Inputs already checked/validated in show_crop.
 async function pre_parse_screenshot_board() {
@@ -1461,9 +1469,9 @@ async function parse_screenshot_board(img_rows, img_columns, tile_pixel_size, cl
         for (let x = 0; x < img_columns; x++) {
             const sx = x * tile_pixel_size;
             const sy = y * tile_pixel_size;
-            tile_ctx.clearRect(0, 0, 16, 16);
-            tile_ctx.drawImage(img_screenshot, cl + sx, cu + sy, tile_pixel_size, tile_pixel_size, 0, 0, 16, 16);
-            const input_tensor = tile_to_tensor(tile_ctx.getImageData(0, 0, 16, 16).data);
+            tile_ctx.clearRect(0, 0, 32, 32);
+            tile_ctx.drawImage(img_screenshot, cl + sx, cu + sy, tile_pixel_size, tile_pixel_size, 0, 0, 32, 32);
+            const input_tensor = tile_to_tensor(tile_ctx.getImageData(0, 0, 32, 32).data);
             const result = await session.run({ input: input_tensor });
             const prediction = result.output.data;
             const pred_class = prediction.indexOf(Math.max(...prediction));

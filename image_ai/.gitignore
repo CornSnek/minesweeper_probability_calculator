@@ -1,5 +1,6 @@
 best/
 pth/
+onnx/
 image_data/
 venv/
 __pycache__/

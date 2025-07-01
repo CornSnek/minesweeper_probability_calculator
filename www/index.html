@@ -21,7 +21,7 @@
 </head>
 
 <body>
-  <canvas id="canvas-tile" style="display: none;" width="16" height="16"></canvas>
+  <canvas id="canvas-tile" style="display: none;" width="32" height="32"></canvas>
   <div id="upload-body">
     <div id="upload-container">
       <div class="upload-element">
@@ -729,6 +729,7 @@
               <br>
               A 1-1 can also allow more than one tile to be guaranteed as safe.
               <div class="tile-template" data-ncolumns="5" data-str="ccccc,cc.c.c.c,cx1cc,cx1cc,cxxxc,ccccc,"></div>
+              To see the general pattern of minimum tiles to be safe, see the <b><a href="#patterns-2d-112233">2D 1-1</a></b> pattern.
             </div>
           </li>
           <li id="patterns-12">
@@ -737,6 +738,9 @@
               A corner near the 2 is guaranteed a mine, and adjacent tiles of the 1 not adjacent of the 2 is guaranteed
               safe.
               <div class="tile-template" data-ncolumns="10" data-str="cc.ccv.cc.ccv.,cx12xcc.12x,cxxxxcc.xxx,"></div>
+              Note that for the minimum amount of tiles for this to work, at least 2 tiles not touching the 1 has to be safe in order to apply this pattern.
+              This essentially creates a <b><a href="#patterns-2d-112233">2D 1-1</a></b> pattern.
+              <div class="tile-template" data-ncolumns="9" data-str="c.c.c.c.c.c.c.c.c.,c1cc1cc1c,c2cc2cc2c,xxv.xv.xv.xx,"></div>
             </div>
           </li>
           <li id="patterns-121">
@@ -745,6 +749,7 @@
               This pattern is an extension of the <b><a href="#patterns-12">1-2</a></b> pattern, where the mines are always on the sides of the 1s
               and are touching the corner of the 2.
               <div class="tile-template" data-ncolumns="5" data-str="c.v.c.v.c.,c.121c.,c.xxxc.,cxxxc,"></div>
+              To see the general minimum number of tiles that can be safe, see the <b><a href="patterns-2d-121132242">2D 1-2-1, 1-3-2, and 2-4-2</a></b> pattern.
             </div>
           </li>
           <li id="patterns-1221">
@@ -767,7 +772,7 @@
               the 3.
               <div class="tile-template" data-ncolumns="4" data-str="c.ccv.,x13c,xx1c,xxxc.,"></div>
               <br>
-              The 1-3-1 corner can also have just have, in minimum, the 3 tiles itself. This can result in more safe tiles.
+              The 1-3-1 corner can also have just have, in minimum, just the 3 tiles itself. This can result in more safe tiles.
               The reasoning is that the 2 mines between the 3 and 1s must be there.
               <div class="tile-template" data-ncolumns="4" data-str="v.ccc.,c31c.,c1c.c.,c.c.c.c,"></div>
             </div>
@@ -793,7 +798,7 @@
                 data-str="xccc.cxccc.cxccc.,x11c.cx22c.cx33c.,xccc.cxccc.cxccc.,"></div>
               <br>
               This can be helpful when you have 2 length number tiles, both as either 1 or 2.
-              <data class="tile-template" data-ncolumns="7" data-str="c.c.c.v.c.c.c.,c11112c,c10002c,"></data>
+              <data class="tile-template" data-ncolumns="7" data-str="c.c.c.v.c.c.c.,c11112c,c10002c,xxxxxxx"></data>
             </div>
           </li>
           <li id="patterns-2d-112233-2">
@@ -826,7 +831,7 @@
             <h3>1-3 and 1-4</h3>
             <div>
               These are similar to the <b><a href="#patterns-12">1-2 Pattern</a></b>, where the tiles left of the 1 must be safe, and the other
-              tiles on the right must be mines.
+              tiles on the right must be mines. 1-3 must have 1 tile not touching 1 blocked, and 1-4 must have 2 tiles not touching 1 blocked.
               <br>
               <br>
               Example of 1-3:
@@ -834,15 +839,21 @@
               <br>
               Example of 1-4:
               <div class="tile-template" data-ncolumns="4" data-str="c.ccv.,c.14v.,c.xxv.,xxxc,"></div>
+              <br><br>
+              Just like the <b><a href="#patterns-2d-112233">2D 1-1</a></b> pattern, the minimum number of tiles is basically only having 1 and 2 tiles blocked for 1-3 and 1-4 respectively to be applied.
+              <div class="tile-template" data-ncolumns="9" data-str="c.c.c.c.c.c.c.c.c.,c1cc1cc1c,c3cc3cc4c,v.xv.xv.v.v.v.v.,"></div>
             </div>
           </li>
           <li id="patterns-2d-14253647">
-            <h3>2D 1-4, 2-5, 3-6, and 4-7</h3>
+            <h3>2D 1-4, 2-5, 3-6, and 4-7 and other variants</h3>
             <div>
-              These patterns show that the tiles are safe on the top 3 adjacent tiles, but there are mines on the bottom
+              You do not have to remember these patterns and numbers, but these patterns show that the tiles are safe on the top 3 adjacent tiles, but there are mines on the bottom
               3 adjacent tiles. There is an exception of the 4-7 with additional guaranteed mines.
-              <div class="tile-template" data-ncolumns="12"
-                data-str="c.c.c.c.c.c.c.c.c.c.c.c.,c1cc2cc3cv.4v.,c4cc5cc6cv.7v.,v.v.v.v.v.v.v.v.v.v.v.v.,"></div>
+              <div class="tile-template" data-ncolumns="12" data-str="c.c.c.c.c.c.c.c.c.c.c.c.,c1cc2cc3cv.4v.,c4cc5cc6cv.7v.,v.v.v.v.v.v.v.v.v.v.v.v.,"></div>
+              Note that just like the <b><a href="#patterns-12">1-2</a></b> and <b><a href="#patterns-1314">1-3</a></b>, there are also configurations of (1-2, 2-3, 3-4, and 4,5) for 1-2 and (1-3, 2-4, 3-5, and 4-6) for 1-3.
+              <br>
+              It's basically the same patterns as above, with 2 tiles not near the 1 being safe for 1-2 + variants and 1 tile not near the 1 being safe for 1-3 + variants.
+              <div class="tile-template" data-ncolumns="12" data-str="c.c.c.c.c.c.c.c.c.c.c.c.,c1cc2cc3cv.4v.,c2cc3cc4cv.5v.,xxv.xv.xxv.xv.xx,c.c.c.c.c.c.c.c.c.c.c.c.,c1cc2cc3cv.4v.,c3cc4cc5cv.6v.,xv.v.v.xv.v.xv.v.v.x,"></div>
             </div>
           </li>
           <li id="patterns-2d-121132242">
@@ -889,9 +900,22 @@
               This makes the 2 tile be a 1 tile.<br>Due to these circumstances, this creates a <b><a href="#patterns-2d-112233">2D 1-1</a></b> pattern,
               allowing the top tiles on the topmost 1 tile to be safe.
               <div class="tile-template" data-ncolumns="5" data-str="ccc.c.c.,ccc1x,ccc2x,cxc?c?x,xf21x,xxxxx,"></div>
+              <br><br>
+              Here is another complex example that can have more than one region shared. The main takeaway is that all mine configurations must reduce each number properly for ALL valid solutions.
+              <div class="tile-template" data-ncolumns="6" data-str="cccxcf,fxxxff,f4124c(2),fc(1)c(1,3)1c(2,3)c(2),cc233c,cccccc,"></div>
+              For the left 4 of all region 1 tiles, there is 1 mine. For the right 4 of all region 2 tiles, there are 2 mines. For the 1 between region 3, there is 1 mine.
+              <br><br>
+              Let's assume there might be a mine in the (1) tile under the left 4. There must be a mine in the (2,3) tile, or the 1 will be underflagged.
+              This makes the tile numbers 2-3 become a 1-2. The right 3 is not considered because a mine in the (2) region might make this either a 2 or 3.
+              <br><br>
+              Let's also assume there might be a mine in the tile under the (1,3) tile. This makes the (1) region have no mine, and (2,3) have no mine too.
               <br>
-              Here is another example. For the 2 next to the flag, this becomes a 1. This makes a region where a mine exists below.
-              The rightmost 2 then becomes a 1, thus creating a <b><a href="#patterns-121">1-2-1</a></b> pattern.
+              This means that 2 mines must be in the region (2) tiles, making this a valid solution.
+              <br>
+              Due to this configuration, the tile numbers 2-3 also become a 1-2 as well.
+              <br><br>
+              When considering all of these possible mine configurations, the 2-3 becomes a 1-2 for all solutions, and thus creates a <b><a href="patterns-12">1-2</a></b> pattern, and would be applied as shown below.
+              <div class="tile-template" data-ncolumns="6" data-str="cccxcf,fxxxff,f4124c(2),fc(1)c(1,3)1c(2,3)c(2),cc.233c,cc.ccv.c,"></div>
             </div>
           </li>
           <li id="patterns-contradiction">
@@ -905,7 +929,7 @@
               Let's assume that tile (2) is a mine tile. This makes tile (1) and (3) safe tiles. However, a contradiction happens because the 5 tile has only 4 flags and is underflagged.
               Due to this, (2) must be a safe tile instead as shown below. This also causes (1) and (3) to be mine tiles instead.
               <div class="tile-template" data-ncolumns="6" data-str="cxxffc,ff4v.fx,xf5c.3x,xfv.2fx,xxc.xxx,"></div>
-              <!--ms-clipboard-data:ccccfxxxcc,cccxf32fxc,xxxx3cc3fx,111xfccc3x,cc1cc2cc3f,11112234fx,xxxxxfc3ff,ccccxfc2xc,-->
+              <br><br>
             </div>
           </li>
         </ul>

@@ -7,7 +7,7 @@ def export(model_path, onnx_path):
     model = cnn.CNNClassifier()
     model.load_state_dict(torch.load(model_path, map_location='cpu'))
     model.eval()
-    dummy_input = torch.randn(1,1,16,16)
+    dummy_input = torch.randn(1,1,32,32)
     torch.onnx.export(
         model,
         dummy_input,
