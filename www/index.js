@@ -194,7 +194,11 @@ async function init() {
     });
     WasmObj = wasm_obj;
     WasmExports = wasm_obj.instance.exports;
-    init_grid(Math.min(parseInt(columns_num.value), 100), Math.min(parseInt(rows_num.value), 100));
+    if (columns_num.validity.valid && rows_num.validity.valid) {
+        init_grid(columns_num.value, rows_num.value);
+    } else {
+        init_grid(10, 10);
+    }
     const UnshiftNums = new Map(
         [
             ['!', '1'],
@@ -219,10 +223,20 @@ async function init() {
                 flood_fill.checked = true;
             } else if (e.key == 'Control') {
                 ctrl_key_down = true;
+            } else if (e.key == 'Escape') {
+                deselect_tiles_f(e);
+                hide_any_right_panels(e);
             } else {
-                if (shift_key_down)
-                    if (e.key == 'Enter')
-                        calculate_probability_f(e);
+                if (shift_key_down) {
+                    switch (e.key) {
+                        case 'Enter':
+                            calculate_probability_f(e);
+                            break;
+                        case 'Delete':
+                            clear_all_tiles(e);
+                            return; //Don't run the same keybind 'Delete' code
+                    }
+                }
                 if (ctrl_key_down) {
                     switch (e.key) {
                         case 'c':
@@ -235,13 +249,20 @@ async function init() {
                             if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA' || e.target.isContentEditable) break;
                             e.preventDefault();
                             if (web_state != STATE_IDLE) break;
-                            console.log(e.target.tagName, e.target.isContentEditable);
                             const undo_node_arr = undo_queue.pop_undo();
                             if (undo_node_arr !== null) {
                                 for (const un of undo_node_arr) {
                                     set_tile(un.x, un.y, un.ms_type);
                                 }
                             } else flash_message(FLASH_ERROR, 'Unable to Undo', 1000);
+                            break;
+                        case 'a':
+                            if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA' || e.target.isContentEditable) break;
+                            e.preventDefault();
+                            if (web_state != STATE_IDLE) break;
+                            tile_select_any_f.bind(new SelectedTile({
+                                t: SelectedTile.Many, p: new TilePoint(0, 0), s: new TilePoint(columns, rows)
+                            }))(e);
                             break;
                     }
                 } else {
@@ -251,6 +272,13 @@ async function init() {
                     }
                 }
             }
+        }
+    });
+    window.addEventListener('resize', e => {
+        const tab = document.querySelector('.options-gui.panel-show');
+        if (tab !== null) {
+            document.querySelector(':root').style.setProperty('--all-tabs-shift', `-${tab.offsetWidth}px`);
+            document.body.style.marginRight = `${all_right_tabs.offsetWidth + tab.offsetWidth}px`;
         }
     });
     document.addEventListener('keyup', e => {
@@ -265,7 +293,7 @@ async function init() {
     [...all_right_tabs.children].forEach(tab_elem => {
         const tab_id = tab_elem.dataset.tab;
         if (tab_id !== undefined) {
-            tab_elem.onclick = (e) => show_tab(tab_elem, tab_id);
+            tab_elem.onclick = (e) => toggle_right_tab(tab_elem, tab_id);
         }
     });
     rows_num.onclick = deselect_tiles_f;
@@ -273,6 +301,10 @@ async function init() {
     gm_count.onclick = deselect_tiles_f;
     generate_grid.onclick = e => {
         if (web_state != STATE_IDLE) return;
+        if (!columns_num.validity.valid || !rows_num.validity.valid) {
+            flash_message(FLASH_ERROR, "Number of Rows and Column should be limited from 1 to 100");
+            return;
+        }
         if (confirm('Are you sure? This will clear all tiles.')) {
             init_grid(parseInt(columns_num.value), parseInt(rows_num.value));
         }
@@ -288,11 +320,7 @@ async function init() {
         }
     }
     clear_probability_button.onclick = clear_all_probability;
-    clear_all_button.onclick = e => {
-        if (web_state != STATE_IDLE) return;
-        if (confirm('Are you sure? This will clear all tiles.'))
-            init_grid(parseInt(columns_num.value), parseInt(rows_num.value))
-    };
+    clear_all_button.onclick = clear_all_tiles;
     document.addEventListener('paste', e => selected_tile.paste_text_clipboard(e.clipboardData.getData('text')));
     document.body.style.marginRight = `${all_right_tabs.offsetWidth}px`;
     document.body.style.marginBottom = `${tile_gui.offsetHeight}px`;
@@ -378,10 +406,12 @@ const worker_handler_module = {
     parse_probability_list,
     do_print,
 };
-function show_tab(tab_elem, tab_id) {
+function toggle_right_tab(tab_elem, tab_id) {
     deselect_tiles_f();
-    hide_any_right_panels();
     const tab = document.getElementById(tab_id);
+    const last_tab = document.querySelector('.options-gui.panel-show');
+    hide_any_right_panels();
+    if (tab === last_tab) return; //Close if same tab
     tab.classList.add('panel-show');
     tab.classList.remove('panel-hide-right');
     all_right_tabs.classList.add('right-tabs-expand');
@@ -711,7 +741,6 @@ function tile_select_any_f(e) {
     tile_gui.classList.remove('panel-hide-down');
     tile_gui.classList.add('panel-show');
     tile_description.innerHTML = get_default_tile_description();
-    keybind_map.set('Escape', deselect_tiles_f);
     const down_f = e => {
         e.preventDefault();
         selected_tile.center_view();
@@ -752,11 +781,26 @@ function tile_select_any_f(e) {
         console.assert(keybind_map.get(ch) === undefined, `Warning: Overwriting keybind_map function '${ch}'`);
         keybind_map.set(ch, assign_selected_f.bind({ tile, selected_tile, set_undo_buffer: true }));
     }
-    keybind_map.set('Delete', assign_selected_f.bind({ tile: MsType.unknown, set_undo_buffer: true }));
+    keybind_map.set('Delete', assign_selected_f.bind({ tile: MsType.unknown, selected_tile, set_undo_buffer: true }));
 }
-function assign_selected_f() {
-    const undo_node_arr = [];
-    if (!flood_fill.checked) {
+///ord_fn is 0 if lhs is equal to rhs, negative if less than, or positive if greater than
+function binary_search(arr, target, ord_fn) {
+    let left = 0;
+    let right = arr.length - 1;
+    while (left <= right) {
+        const mid = Math.floor((left + right) / 2);
+        if (ord_fn(arr[mid], target) == 0) return mid;
+        else if (ord_fn(arr[mid], target) < 0) left = mid + 1;
+        else right = mid - 1;
+    }
+    return -1;
+}
+function undo_node_ord(lhs, rhs) {
+    return lhs.y * columns + lhs.x - rhs.y * columns - rhs.x;
+}
+function assign_selected_f(e) {
+    let undo_node_arr = [];
+    if (!flood_fill.checked || this.no_flood_fill) {
         for (const div of this.selected_tile.get_div_array()) {
             const x = parseInt(div.dataset.x);
             const y = parseInt(div.dataset.y);
@@ -765,6 +809,8 @@ function assign_selected_f() {
             set_tile(x, y, this.tile);
         }
     } else {
+        if (selected_tile.type === SelectedTile.Many)
+            if (!confirm('Selecting more than one tile and using flood fill is not recommended. Continue?')) return undo_node_arr;
         for (const div of this.selected_tile.get_div_array()) {
             const i_set_visited = new Set();
             const stack_i = [];
@@ -781,9 +827,13 @@ function assign_selected_f() {
                 const this_y = Math.floor(this_i / columns);
                 const cmp_mstype = WasmExports.QueryTile(this_x, this_y);
                 if (cmp_mstype !== to_fill_mstype) continue;
-                undo_node_arr.push(new UndoNode(this_x, this_y, cmp_mstype));
+                const ua = new UndoNode(this_x, this_y, cmp_mstype);
+                if (binary_search(undo_node_arr, ua, undo_node_ord) === -1) { //Uniquely add each tile by binary search/sort
+                    undo_node_arr.push(ua);
+                    undo_node_arr.sort(undo_node_ord);
+                }
                 set_tile(this_x, this_y, this.tile);
-                if (this_x + 1 !== columns) {
+                if (this_x + 1 != columns) {
                     const ri = this_y * columns + (this_x + 1);
                     stack_i.push(ri);
                 }
@@ -791,7 +841,7 @@ function assign_selected_f() {
                     const li = this_y * columns + (this_x - 1);
                     stack_i.push(li);
                 }
-                if (this_y + 1 !== rows) {
+                if (this_y + 1 != rows) {
                     const di = (this_y + 1) * columns + this_x;
                     stack_i.push(di);
                 }
@@ -863,6 +913,17 @@ function calculate_probability_f(e) {
         flash_message(FLASH_ERROR, 'Cancelled Calculation');
     }
 }
+function clear_all_tiles(e) {
+    if (web_state != STATE_IDLE) return;
+    assign_selected_f.bind({
+        tile: MsType.unknown,
+        selected_tile: new SelectedTile({
+            t: SelectedTile.Many, p: new TilePoint(0, 0), s: new TilePoint(columns, rows)
+        }),
+        set_undo_buffer: true,
+        no_flood_fill: true
+    })();
+};
 function clear_all_probability() {
     document.querySelectorAll('[data-probability]').forEach(clear_probability);
 }
@@ -876,6 +937,7 @@ function clear_probability(div) {
     delete div.dataset.probability;
     delete div.dataset.error;
     delete div.dataset.freq_a;
+    delete div.dataset.freq_na;
 }
 function get_default_tile_description() {
     console.assert(grid_body != null && columns != null, 'grid_body and columns must not be null');
@@ -885,8 +947,7 @@ function get_default_tile_description() {
         td += `(x:${selected_tile.select.x},y:${selected_tile.select.y})`;
         let status;
         if ((status = div.dataset.error) !== undefined) {
-            td += `<br> ${CalculateStatus.$error_message[status]}`;
-            return td;
+            td += `<br>${CalculateStatus.$error_message[status]}`;
         } else if ((status = div.dataset.freq_a) !== undefined) {
             const map_regex = /([t\d]+G?):=(\d+)\./g;
             const START = 0;
@@ -915,7 +976,8 @@ function get_default_tile_description() {
                 }
             }
             td += ']';
-            return td;
+        } else if ((status = div.dataset.freq_na) !== undefined) {
+            td += `<br>Non-adjacent tile count: ${status}`;
         }
     } else if (selected_tile.type === SelectedTile.Many) {
         td += `(x:${selected_tile.select.p.x},y:${selected_tile.select.p.y}):(x:${selected_tile.select.p.x + selected_tile.select.s.x - 1},y:${selected_tile.select.p.y + selected_tile.select.s.y - 1})<br>`;
@@ -1091,6 +1153,7 @@ class MFGList {
                         : color_lerp(tile_colors.neutral, tile_colors.mine, percentage * 2 - 1);
                     div.style.setProperty('--tile-color', tc);
                 }
+                div.dataset.freq_na = non_adjacent_tiles;
                 div.dataset.probability = 'y';
             }
         });
@@ -1115,7 +1178,7 @@ function parse_probability_list(c_arr_ptr) {
     clear_all_probability();
     if (show_results_check.checked) {
         const results_tab_button = document.getElementById('results-tab-button');
-        show_tab(results_tab_button, 'results-tab');
+        toggle_right_tab(results_tab_button, 'results-tab');
     }
     const calc_arr = new DataView(WasmMemory.buffer, c_arr_ptr, CalculateArray.$size);
     const calc_arr_status = calc_arr.getUint8(CalculateArray.status.offset, true);
@@ -1426,12 +1489,10 @@ function show_crop() {
     upload_output.textContent = `Calculating: ${img_columns} x ${img_rows} board with ${tile_pixel_size}px tile size.`;
     if (img_rows > 100 || img_rows <= 0) {
         flash_message(FLASH_ERROR, 'Detected invalid number of rows in screenshot. Must be from 1 to 100.');
-        upload_output.textContent = '';
         return;
     }
     if (cl + cr >= img_screenshot.width || cu + cd >= img_screenshot.height) {
         flash_message(FLASH_ERROR, 'Crop size must be less than the size of the image.', 3000);
-        upload_output.textContent = '';
         return;
     }
     parse_screenshot.disabled = false;

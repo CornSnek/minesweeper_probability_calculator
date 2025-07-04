@@ -46,7 +46,3 @@ The file is then placed into the `www` folder to be used by ONNX Runtime.
 - **KaTeX** (https://katex.org) was added to this project to show and format the matrices and probability calculations
 - **coi-serviceworker** (https://github.com/gzuidhof/coi-serviceworker) was added to this project to enable COOP and COEP headers for Github Pages
 - **ONNX Runtime** (https://onnxruntime.ai) was added to this project to help detect most of the tiles in a screenshot
-
-
-## TODO
-- Have right tab pages to always have the close button appear on the top right or bottom right.

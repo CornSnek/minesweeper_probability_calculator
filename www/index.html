@@ -36,15 +36,15 @@
       </div>
       <div class="upload-element">
           <label for="board-width-size">Board Width</label>
-          <input id="board-width-size" type="number" value="10" step="1" min="1" size="3">
+          <input id="board-width-size" type="number" value="10" step="1" min="1" size="3" disabled>
           <label for="crop-left">Crop Left</label>
-          <input id="crop-left" type="number" value="0" step="1" min="0" size="4">
+          <input id="crop-left" type="number" value="0" step="1" min="0" size="4" disabled>
           <label for="crop-right">Crop Right</label>
-          <input id="crop-right" type="number" value="0" step="1" min="0" size="4">
+          <input id="crop-right" type="number" value="0" step="1" min="0" size="4" disabled>
           <label for="crop-up">Crop Up</label>
-          <input id="crop-up" type="number" value="0" step="1" min="0" size="4">
+          <input id="crop-up" type="number" value="0" step="1" min="0" size="4" disabled>
           <label for="crop-down">Crop Down</label>
-          <input id="crop-down" type="number" value="0" step="1" min="0" size="4">
+          <input id="crop-down" type="number" value="0" step="1" min="0" size="4" disabled>
           <br>
           <div id="upload-output"></div>
           <br>
@@ -100,7 +100,7 @@
       Clear Results
     </div>
     <div id="clear-all-button" class="tabs-button">
-      Clear All Tiles
+      Clear All Tiles <strong class="badge">Shift</strong>+<strong class="badge">Delete</strong>
     </div>
     <div class="tabs-button" data-tab="patterns-tab">
       Minesweeper Patterns
@@ -533,7 +533,7 @@
           \]
           The first map function \( MF_1 \) can just be used as the other subsystems 2, 3, 4, ... would result in the same calculation.
           <br>
-          An example calculation of MF_{G_G} is:
+          An example calculation of \( MF_{G_G} \) is:
           \[
             \begin{array}{ll}
               CD(MF_{G_1},MF_{G_2}) &=
@@ -749,7 +749,7 @@
               This pattern is an extension of the <b><a href="#patterns-12">1-2</a></b> pattern, where the mines are always on the sides of the 1s
               and are touching the corner of the 2.
               <div class="tile-template" data-ncolumns="5" data-str="c.v.c.v.c.,c.121c.,c.xxxc.,cxxxc,"></div>
-              To see the general minimum number of tiles that can be safe, see the <b><a href="patterns-2d-121132242">2D 1-2-1, 1-3-2, and 2-4-2</a></b> pattern.
+              To see the general minimum number of tiles that can be safe, see the <b><a href="#patterns-2d-121132242">2D 1-2-1, 1-3-2, and 2-4-2</a></b> pattern.
             </div>
           </li>
           <li id="patterns-1221">
@@ -831,7 +831,7 @@
             <h3>1-3 and 1-4</h3>
             <div>
               These are similar to the <b><a href="#patterns-12">1-2 Pattern</a></b>, where the tiles left of the 1 must be safe, and the other
-              tiles on the right must be mines. 1-3 must have 1 tile not touching 1 blocked, and 1-4 must have 2 tiles not touching 1 blocked.
+              tiles on the right must be mines. 1-3 must have 1 tile not touching 1 blocked, and 1-4 just have all 3 mines not touching 1.
               <br>
               <br>
               Example of 1-3:
@@ -840,7 +840,7 @@
               Example of 1-4:
               <div class="tile-template" data-ncolumns="4" data-str="c.ccv.,c.14v.,c.xxv.,xxxc,"></div>
               <br><br>
-              Just like the <b><a href="#patterns-2d-112233">2D 1-1</a></b> pattern, the minimum number of tiles is basically only having 1 and 2 tiles blocked for 1-3 and 1-4 respectively to be applied.
+              Just like the <b><a href="#patterns-2d-112233">2D 1-1</a></b> pattern, the minimum number of tiles is basically only having 1 and 0 tiles blocked for 1-3 and 1-4 respectively to be applied.
               <div class="tile-template" data-ncolumns="9" data-str="c.c.c.c.c.c.c.c.c.,c1cc1cc1c,c3cc3cc4c,v.xv.xv.v.v.v.v.,"></div>
             </div>
           </li>
@@ -859,11 +859,11 @@
           <li id="patterns-2d-121132242">
             <h3>2D 1-2-1, 1-3-2, and 2-4-2</h3>
             <div>
-              These patterns show 8 tiles that are on the left, the right, and the middle. The exceptions are that the
+              These patterns show the guaranteed safe 8 tiles that are on the left, the right, and the middle. The exceptions are that the
               1-3-2 have mines on top and bottom of the 2, and the 2-4-2 have mines on the corner of the 4s.
               <br>
-              Basically, a 2-4-2 is a <b><a href="#patterns-121">1-2-1</a></b> pattern with mines on all sides except on top and bottom of 4, and
-              left and right of the 2s.
+              A 2-4-2 is a <b><a href="#patterns-121">1-2-1</a></b> pattern with mines on all sides except on top and bottom of 4, and
+              left and right of the 2s. A 1-3-2 and 1-2-1 can have one mine that can be on either side of the 1s.
               <div class="tile-template" data-ncolumns="10"
                 data-str="c.cc.cc.c.cc.v.c.,c.121c.c.132c.,c.cc.cc.c.cc.v.c.,c.v.c.v.c.ccccc,c.242c.ccccc,c.v.c.v.c.ccccc">
               </div>
@@ -914,7 +914,7 @@
               <br>
               Due to this configuration, the tile numbers 2-3 also become a 1-2 as well.
               <br><br>
-              When considering all of these possible mine configurations, the 2-3 becomes a 1-2 for all solutions, and thus creates a <b><a href="patterns-12">1-2</a></b> pattern, and would be applied as shown below.
+              When considering all of these possible mine configurations, the 2-3 becomes a 1-2 for all solutions, and thus creates a <b><a href="#patterns-12">1-2</a></b> pattern, and would be applied as shown below.
               <div class="tile-template" data-ncolumns="6" data-str="cccxcf,fxxxff,f4124c(2),fc(1)c(1,3)1c(2,3)c(2),cc.233c,cc.ccv.c,"></div>
             </div>
           </li>
@@ -953,12 +953,9 @@
         class="badge">&larr;</strong><strong class="badge">&rarr;</strong>
       or <strong class="badge">W</strong><strong class="badge">A</strong><strong class="badge">S</strong><strong
         class="badge">D</strong> to move the select region by 1 tile.
-      You can hover over each tile below for its description. You can also use keys on each tile below to add to the
-      board. <strong class="badge">Ctrl</strong>+<strong class="badge">C</strong>,
-      <strong class="badge">Ctrl</strong>+<strong class="badge">X</strong>,
-      <strong class="badge">Ctrl</strong>+<strong class="badge">V</strong>, and
-      <strong class="badge">Ctrl</strong>+<strong class="badge">Z</strong> can be used to copy, cut, paste, and undo tile data
-      respectively.
+      You can hover over each tile below for its description.
+      Holding <strong class="badge">Ctrl</strong> and then using <strong class="badge">C</strong>/<strong class="badge">X</strong>/<strong class="badge">V</strong>/<strong class="badge">A</strong>/<strong class="badge">Z</strong>
+      can be used to copy, cut, paste, select all, and undo respectively.
       <label for="flood-fill"><b>Hold Down <strong class="badge">Shift</strong> to Flood Fill</b></label>
       <input type="checkbox" id="flood-fill">
     </div>
