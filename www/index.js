@@ -1426,12 +1426,16 @@ document.addEventListener('drop', async e => {
 //Should be same order as image_ai/labels.py
 const class_labels = ['unknown', 'mine', 'flag', '0', '1', '2', '3', '4', '5', '6', '7', '8'];
 const img_screenshot = new Image();
+let last_image_file = null;
+let reset_crop_values = true; //Don't clear values if using the same file.
 img_screenshot.onload = () => {
-    crop_left.value = 0;
-    crop_right.value = 0;
-    crop_up.value = 0;
-    crop_down.value = 0;
-    board_width_size.value = 10;
+    if (reset_crop_values) {
+        crop_left.value = 0;
+        crop_right.value = 0;
+        crop_up.value = 0;
+        crop_down.value = 0;
+        board_width_size.value = 10;
+    }
     disable_upload_sliders(false);
     web_state = STATE_UPLOAD;
     show_crop();
@@ -1451,8 +1455,21 @@ async function show_upload_body(file) {
     if (flood_fill.checked) flood_fill.checked = false;
     canvas_screenshot.width = 0;
     canvas_screenshot.height = 0;
-    if (file !== undefined)
+    if (file === undefined && last_image_file !== null) {
+        reset_crop_values = false;
+        img_screenshot.src = URL.createObjectURL(last_image_file);
+    } else if (file !== undefined && last_image_file !== null) {
+        reset_crop_values = (file.name !== last_image_file.name
+            || file.lastModified !== last_image_file.lastModified
+            || file.size !== last_image_file.size
+        ) //Only reset if different file.
+        last_image_file = file;
         img_screenshot.src = URL.createObjectURL(file);
+    } else if (file !== undefined && last_image_file === null){
+        reset_crop_values = true;
+        last_image_file = file;
+        img_screenshot.src = URL.createObjectURL(file);
+    }
 }
 let crop_left;
 let crop_right;
@@ -1549,5 +1566,5 @@ async function parse_screenshot_board(img_rows, img_columns, tile_pixel_size, cl
     }))(undefined);
     selected_tile.paste_text_clipboard(tile_string);
     deselect_tiles_f(undefined);
-    flash_message(FLASH_SUCCESS, 'Completed parsing tiles from screenshot. Please check your screenshot for any incorrect tiles.', 5000);
+    flash_message(FLASH_SUCCESS, 'Completed parsing tiles from screenshot. Please check your screenshot for any incorrect tiles. You can try to open Parse Minesweeper Screenshot again to readjust crop values and board width.', 5000);
 }
