@@ -1566,5 +1566,5 @@ async function parse_screenshot_board(img_rows, img_columns, tile_pixel_size, cl
     }))(undefined);
     selected_tile.paste_text_clipboard(tile_string);
     deselect_tiles_f(undefined);
-    flash_message(FLASH_SUCCESS, 'Completed parsing tiles from screenshot. Please check your screenshot for any incorrect tiles. You can try to open Parse Minesweeper Screenshot again to readjust crop values and board width.', 5000);
+    flash_message(FLASH_SUCCESS, 'Completed parsing tiles from screenshot. Please check your screenshot for any incorrect tiles. You can try to reopen Parse Minesweeper Screenshot again to readjust crop values and board width.', 10000);
 }
