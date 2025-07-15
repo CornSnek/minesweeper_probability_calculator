@@ -220,6 +220,8 @@
         <div>
           To calculate the global probability of adjacent, the global mine count as \( M_G \) is considered, including the number of mines for each solution array \( S \) in a solution set \( SS \).
           <br>
+          Note that the global mine count is affected by the number of flags + mines. You would have to subtract all flags + mines from the mine count.
+          <br>
           Here are also other variables to define:
           \[
             \begin{array}{l}
@@ -365,7 +367,8 @@
         </div>
         <h3>Global Probability (Non-Adjacent Tiles)</h3>
         <div>
-          The number of combinations of leftover mines is used for the global probability of non-adjacent tiles. It is also the denominator or sample space, described as
+          To get the probability for a non-adjacent tile, we consider the weight for each number of leftover mines, where the weight is \( MF_G(m) \), and the number of combinations of leftover mines.
+          The number of combinations of leftover mines is described below.
           \[
             \displaystyle \sum_{ m \in S_{M_G} } \binom{U_{NA}}{M_G - m}
           \]
@@ -393,25 +396,61 @@
           <br>
           Let's also check \( m = 1 \). Using the formula, there are  \( \binom{U_{NA}}{M_G - m} = \binom{10}{3} = 120 \text{ combinations}\) and \( \binom{U_{NA} - 1}{M_G - m - 1} = \binom{9}{2} = 36 \text{ combinations that have a mine in any tile.}\)
           <br>
-          The global probability for non-adjacent tiles is the following.
+          <br>
+          The probability of a non-adjacent tile is a mine would be the following with simplifications:
+          \[
+            \begin{aligned}
+              \frac{ \binom{U_{NA}-1}{M_G-m-1} }{ \binom{U_{NA}}{M_G-m} } &= \frac{ \binom{a-1}{b-1} }{ \binom{a}{b} }
+              \text{, } a=U_NA \text{, } b=M_G-m \\
+              &= \frac{ \frac{ (a-1)! }{ (b-1)!(a-1-b+1)! } }{ \frac{ a! }{ b!(a-b)! } } \\
+              &= \frac{ \frac{ (a-1)! }{ (b-1)!(a-b)! } }{ \frac{ a \cdot (a-1)! }{ b \cdot (b-1)!(a-b)! } } \\
+              &= \frac{ 1 }{ \frac{a}{b} } \\
+              &= \frac{ b }{ a } \\
+              &= \frac{ M_G - m }{ U_{NA} } \\
+            \end{aligned}
+          \]
+          We need to also multiply the weight of each mine combination, where the numerator is the number of solutions per mines, or \( MF_G(m) \). The denominator of the weight would be the sum of all \( MF_G(m) \)
+          <br><br>
+          Thus, the formula of global probability for non-adjacent tiles is the following.
           \[
             \text{GlobalProbability}_{NA} = 
-            \frac{
-              \displaystyle \sum_{ m \in S_{M_G} } \binom{U_{NA} - 1}{M_G - m - 1}
+            \sum_{ m \in S_{M_G} } \frac{
+              (M_G-m) \cdot MF_G(m)
             }{
-              \displaystyle \sum_{ m \in S_{M_G} } \binom{U_{NA}}{M_G - m}
+              U_{NA} \cdot ( \displaystyle \sum_{ m' \in S_{M_G} } MF_G(m') )
             }
           \]
         </div>
-        <h3>Global Probability (Adjacent Tiles), where only some solutions are valid</h3>
+        <h3>Global Probability, where only some solutions are valid</h3>
         <div>
-          What happens if the global mine count \( M_G \) is just 1? This means that there can only be 2 solutions that are valid that have 1 mine, and the 12 solutions that are 2 mines are simply discarded.
-          So the formula can be changed depending on the global mine count, and thus \( \text{GlobalProbability}_A(T) \) can be rewritten as the following.
+          Not all solutions may fit if there are too many or too little global mine counts given.
+          <br>
+          <br>
+          For example, what happens if the global mine count \( M_G \) is just 1? This means that there can only be 2 solutions that are valid that have 1 mine, and the 12 solutions that have 2 mines are simply discarded.
+          <br>
+          <br>
+          Also, what happens if the global mine count is greater than the number of mines \( m \) that would not fit for all non-adjacent tiles provided (e.g. \( M_G \gt m + U_{NA} \))? Then any solutions that cannot fit all leftover mines to non-adjacent tiles are also discarded.
+          This would happen if \( M_G \) is 12.\. The 12 solutions from \( m = 2 \) is kept, and the 2 solutions for \( m = 1 \) would be discarded.
+          <br>
+          <br>
+          Considering these edge cases changes the probability depending on the global mine count.
+          <br>
+          And thus, \( \text{GlobalProbability}_A(T) \) can be rewritten as the following.
           \[ 
             \frac{
-              \displaystyle \sum_{ m_T \in S_{M_T} | m_T \le M_G } MF_T(m_T) \cdot \binom{U_{NA}}{M_G - m_T}
+              \displaystyle \sum_{ m_T \in S_{M_T} \text{ | } m_T \le M_G \text{ and } M_G \le m_T + U_{NA} } MF_T(m_T) \cdot \binom{U_{NA}}{M_G - m_T}
             }{
-              \displaystyle \sum_{ m \in S_{M_G} | m \le M_G } MF_G(m) \cdot \binom{U_{NA}}{M_G - m}
+              \displaystyle \sum_{ m \in S_{M_G} \text{ | } m \le M_G \text{ and } M_G \le m + U_{NA} } MF_G(m) \cdot \binom{U_{NA}}{M_G - m}
+            }
+          \]
+          <br>
+          The boundaries also affect the probability of non-adjacent tiles as well, affecting the probability and weight sum calculations.
+          \[
+            \text{GlobalProbability}_{NA} = 
+            \sum_{ m \in S_{M_G} \text{ | } m \le M_G \text{ and } M_G \le m + U_{NA} } \frac{
+              (M_G-m) \cdot MF_G(m)
+            }{
+              U_{NA} \cdot ( \displaystyle \sum_{ m' \in S_{M_G} \text{ | } m' \le M_G \text{ and } M_G \le m' + U_{NA} } MF_G(m') )
             }
           \]
           Note, that if the global mine count is less than all known solution mine numbers, then the program will throw an error of 'Too little mines!'.

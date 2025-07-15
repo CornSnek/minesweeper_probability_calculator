@@ -1047,7 +1047,7 @@ class MFGList {
     gm_probability() {
         let gmfg = null;
         if (this.global.length !== 0) gmfg = this.global[0].map;
-        let global_mine_count = parseInt(gm_count.value);
+        let mine_count_adj = parseInt(gm_count.value);
         let mine_flag_count = 0;
         let adjacent_tiles = 0;
         this.local.forEach(mfg_arr => adjacent_tiles += mfg_arr.length);
@@ -1056,11 +1056,11 @@ class MFGList {
             const ms_type = div.dataset.ms_type;
             non_adjacent_tiles += ms_type == MsType.unknown;
             const is_mine_or_flag = ms_type == MsType.mine || ms_type == MsType.flag;
-            global_mine_count -= is_mine_or_flag;
+            mine_count_adj -= is_mine_or_flag;
             mine_flag_count += is_mine_or_flag;
         });
-        if (global_mine_count < 0) {
-            flash_message(FLASH_ERROR, `Error: The mines + flags placed (${mine_flag_count}) exceeds the global mine count (${global_mine_count + mine_flag_count}).`);
+        if (mine_count_adj < 0) {
+            flash_message(FLASH_ERROR, `Error: The mines + flags placed (${mine_flag_count}) exceeds the global mine count (${mine_count_adj + mine_flag_count}).`);
             return;
         }
         non_adjacent_tiles -= adjacent_tiles;
@@ -1072,23 +1072,28 @@ class MFGList {
         let min_gm = Infinity;
         if (gmfg !== null) {
             let too_many_skip = 0;
+            let gf_sum = 0n;
             for (const [gm, gf] of gmfg) {
                 min_gm = Math.min(min_gm, gm);
-                if (gm > global_mine_count) {
+                if (gm > mine_count_adj) {
                     too_many_skip++;
                     continue;
                 }
-                a_denominator += gf * comb(non_adjacent_tiles, global_mine_count - gm);
-                na_numerator += comb(non_adjacent_tiles - 1, global_mine_count - gm - 1);
-                na_denominator += comb(non_adjacent_tiles, global_mine_count - gm);
+                a_denominator += gf * comb(non_adjacent_tiles, mine_count_adj - gm);
+                //Discard solutions that have too little mines and would overfill non adjacent tiles.
+                if(mine_count_adj <= non_adjacent_tiles + gm) {
+                    na_numerator += BigInt(mine_count_adj - gm) * gf;
+                    gf_sum += gf;
+                }
                 max_gm = Math.max(max_gm, gm);
             }
+            na_denominator = BigInt(non_adjacent_tiles) * gf_sum;
             if (gmfg.size != 0 && gmfg.size == too_many_skip) {
-                flash_message(FLASH_ERROR, `Error: Too little mines! The global mine count is ${global_mine_count + mine_flag_count} - (${mine_flag_count} mines + flags) = ${global_mine_count}. All solutions require at least ${min_gm} or more mines. Global mine count must be >= ${min_gm + mine_flag_count}.`);
+                flash_message(FLASH_ERROR, `Error: Too little mines! The global mine count is ${mine_count_adj + mine_flag_count} - (${mine_flag_count} mines + flags) = ${mine_count_adj}. All solutions require at least ${min_gm} or more mines. Global mine count must be >= ${min_gm + mine_flag_count}.`);
                 return;
             }
             if (a_denominator === 0n) {
-                flash_message(FLASH_ERROR, `Error: Too many mines! The global mine count is ${global_mine_count + mine_flag_count} - (${mine_flag_count} mines + flags) = ${global_mine_count}. One solution has a maximum of ${max_gm} mines and there are only ${non_adjacent_tiles} non-adjacent tiles to fill, resulting in the sum of only ${max_gm + non_adjacent_tiles} mines. Global mine count must be <= ${max_gm + non_adjacent_tiles + mine_flag_count}.`);
+                flash_message(FLASH_ERROR, `Error: Too many mines! The global mine count is ${mine_count_adj + mine_flag_count} - (${mine_flag_count} mines + flags) = ${mine_count_adj}. One solution has a maximum of ${max_gm} mines and there are only ${non_adjacent_tiles} non-adjacent tiles to fill, resulting in the sum of only ${max_gm + non_adjacent_tiles} mines. Global mine count must be <= ${max_gm + non_adjacent_tiles + mine_flag_count}.`);
                 return;
             }
         }
@@ -1096,8 +1101,8 @@ class MFGList {
             mfg_arr.forEach(mfg => {
                 let a_numerator = 0n;
                 for (const [gm, gf] of mfg.map) {
-                    if (gm > global_mine_count) continue;
-                    a_numerator += gf * comb(non_adjacent_tiles, global_mine_count - gm);
+                    if (gm > mine_count_adj) continue;
+                    a_numerator += gf * comb(non_adjacent_tiles, mine_count_adj - gm);
                 }
                 const pb = format_percentage(a_numerator, a_denominator);
                 const x = mfg.x;
@@ -1125,12 +1130,12 @@ class MFGList {
         });
         //Probability of an empty matrix (No adjacent tiles) is just (number of mines)/(number of non-adjacent tiles)
         if (this.global.length === 0) {
-            if (global_mine_count > non_adjacent_tiles) {
-                flash_message(FLASH_ERROR, `Error: Too many mines! The global mine count is ${global_mine_count + mine_flag_count} - (${mine_flag_count} mines + flags) = ${global_mine_count}. There are only ${non_adjacent_tiles} non-adjacent tiles that can be mines. Global mine count must be <= ${mine_flag_count + non_adjacent_tiles}.`);
+            if (mine_count_adj > non_adjacent_tiles) {
+                flash_message(FLASH_ERROR, `Error: Too many mines! The global mine count is ${mine_count_adj + mine_flag_count} - (${mine_flag_count} mines + flags) = ${mine_count_adj}. There are only ${non_adjacent_tiles} non-adjacent tiles that can be mines. Global mine count must be <= ${mine_flag_count + non_adjacent_tiles}.`);
                 return;
             }
             na_denominator = non_adjacent_tiles;
-            na_numerator = global_mine_count;
+            na_numerator = mine_count_adj;
         }
         //console.log(na_numerator, na_denominator, (100 * Number(na_numerator) / Number(na_denominator)).toFixed(2));
         [...grid_body.children].forEach(div => { //Fill Non-adjacent unknown tiles with the same probability
@@ -1465,7 +1470,7 @@ async function show_upload_body(file) {
         ) //Only reset if different file.
         last_image_file = file;
         img_screenshot.src = URL.createObjectURL(file);
-    } else if (file !== undefined && last_image_file === null){
+    } else if (file !== undefined && last_image_file === null) {
         reset_crop_values = true;
         last_image_file = file;
         img_screenshot.src = URL.createObjectURL(file);
