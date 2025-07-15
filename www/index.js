@@ -27,6 +27,7 @@ let flash_body;
 let flash_content;
 let select_probability;
 let gm_count;
+let include_flags;
 let patterns_list;
 let patterns_table_of_contents;
 let flood_fill;
@@ -146,6 +147,7 @@ async function init() {
     flash_content = document.getElementById('flash-content');
     select_probability = document.getElementById('select-probability');
     gm_count = document.getElementById('gm-count');
+    include_flags = document.getElementById('include-flags');
     patterns_list = document.getElementById('patterns-list');
     patterns_table_of_contents = document.getElementById('patterns-table-of-contents');
     flood_fill = document.getElementById('flood-fill');
@@ -349,8 +351,10 @@ async function init() {
     select_probability.onchange = e => {
         const prob_type = e.target.value;
         gm_count.disabled = prob_type !== 'Global';
+        include_flags.disabled = prob_type !== 'Global';
         flash_message(FLASH_SUCCESS, (prob_type !== 'Global') ? 'Local shows only the probability for adjacent tiles' : 'Global shows the probability of the whole board, where Mine Count is considered', 5000);
     };
+    include_flags.onchange = e => flash_message(FLASH_SUCCESS, e.target.checked ? 'Flags and mines are counted in Global Count to consider the total number of mines left + flags + mines in a board.' : 'Flags and mines are not counted in Global Count to consider only the number of mines left.', 5000);
     parse_screenshot.onclick = pre_parse_screenshot_board;
     crop_left.onchange = delay_show_crop;
     crop_left.onclick = delay_show_crop;
@@ -367,6 +371,7 @@ async function init() {
         web_state = STATE_IDLE;
     }
     gm_count.disabled = select_probability.value !== 'Global';
+    include_flags.disabled = select_probability.value !== 'Global';
     console.log('Waiting for KaTeX module...');
     wait_katex();
 }
@@ -1055,12 +1060,18 @@ class MFGList {
         [...grid_body.children].forEach(div => {
             const ms_type = div.dataset.ms_type;
             non_adjacent_tiles += ms_type == MsType.unknown;
-            const is_mine_or_flag = ms_type == MsType.mine || ms_type == MsType.flag;
-            mine_count_adj -= is_mine_or_flag;
-            mine_flag_count += is_mine_or_flag;
+            if (include_flags.checked) {
+                const is_mine_or_flag = ms_type == MsType.mine || ms_type == MsType.flag;
+                mine_count_adj -= is_mine_or_flag;
+                mine_flag_count += is_mine_or_flag;
+            }
         });
         if (mine_count_adj < 0) {
-            flash_message(FLASH_ERROR, `Error: The mines + flags placed (${mine_flag_count}) exceeds the global mine count (${mine_count_adj + mine_flag_count}).`);
+            if (include_flags.checked) {
+                flash_message(FLASH_ERROR, `Error: The mines + flags placed (${mine_flag_count}) exceeds the global mine count (${mine_count_adj + mine_flag_count}).`);
+            } else {
+                flash_message(FLASH_ERROR, `Error: Global mine count is less than 0.`);
+            }
             return;
         }
         non_adjacent_tiles -= adjacent_tiles;
@@ -1081,7 +1092,7 @@ class MFGList {
                 }
                 a_denominator += gf * comb(non_adjacent_tiles, mine_count_adj - gm);
                 //Discard solutions that have too little mines and would overfill non adjacent tiles.
-                if(mine_count_adj <= non_adjacent_tiles + gm) {
+                if (mine_count_adj <= non_adjacent_tiles + gm) {
                     na_numerator += BigInt(mine_count_adj - gm) * gf;
                     gf_sum += gf;
                 }
@@ -1089,11 +1100,19 @@ class MFGList {
             }
             na_denominator = BigInt(non_adjacent_tiles) * gf_sum;
             if (gmfg.size != 0 && gmfg.size == too_many_skip) {
-                flash_message(FLASH_ERROR, `Error: Too little mines! The global mine count is ${mine_count_adj + mine_flag_count} - (${mine_flag_count} mines + flags) = ${mine_count_adj}. All solutions require at least ${min_gm} or more mines. Global mine count must be >= ${min_gm + mine_flag_count}.`);
+                if (include_flags.checked) {
+                    flash_message(FLASH_ERROR, `Error: Too little mines! The global mine count is ${mine_count_adj + mine_flag_count} - (${mine_flag_count} mines + flags) = ${mine_count_adj}. All solutions require at least ${min_gm} or more mines. Global mine count must be >= ${min_gm + mine_flag_count}.`);
+                } else {
+                    flash_message(FLASH_ERROR, `Error: Too little mines! The global mine count is ${mine_count_adj}. All solutions require at least ${min_gm} or more mines. Global mine count must be >= ${min_gm}.`);
+                }
                 return;
             }
             if (a_denominator === 0n) {
-                flash_message(FLASH_ERROR, `Error: Too many mines! The global mine count is ${mine_count_adj + mine_flag_count} - (${mine_flag_count} mines + flags) = ${mine_count_adj}. One solution has a maximum of ${max_gm} mines and there are only ${non_adjacent_tiles} non-adjacent tiles to fill, resulting in the sum of only ${max_gm + non_adjacent_tiles} mines. Global mine count must be <= ${max_gm + non_adjacent_tiles + mine_flag_count}.`);
+                if (include_flags.checked) {
+                    flash_message(FLASH_ERROR, `Error: Too many mines! The global mine count is ${mine_count_adj + mine_flag_count} - (${mine_flag_count} mines + flags) = ${mine_count_adj}. One solution has a maximum of ${max_gm} mines and there are only ${non_adjacent_tiles} non-adjacent tiles to fill, resulting in the sum of only ${max_gm + non_adjacent_tiles} mines. Global mine count must be <= ${max_gm + non_adjacent_tiles + mine_flag_count}.`);
+                } else {
+                    flash_message(FLASH_ERROR, `Error: Too many mines! The global mine count is ${mine_count_adj}. One solution has a maximum of ${max_gm} mines and there are only ${non_adjacent_tiles} non-adjacent tiles to fill, resulting in the sum of only ${max_gm + non_adjacent_tiles} mines. Global mine count must be <= ${max_gm + non_adjacent_tiles}.`);
+                }
                 return;
             }
         }
@@ -1131,7 +1150,11 @@ class MFGList {
         //Probability of an empty matrix (No adjacent tiles) is just (number of mines)/(number of non-adjacent tiles)
         if (this.global.length === 0) {
             if (mine_count_adj > non_adjacent_tiles) {
-                flash_message(FLASH_ERROR, `Error: Too many mines! The global mine count is ${mine_count_adj + mine_flag_count} - (${mine_flag_count} mines + flags) = ${mine_count_adj}. There are only ${non_adjacent_tiles} non-adjacent tiles that can be mines. Global mine count must be <= ${mine_flag_count + non_adjacent_tiles}.`);
+                if (include_flags.checked) {
+                    flash_message(FLASH_ERROR, `Error: Too many mines! The global mine count is ${mine_count_adj + mine_flag_count} - (${mine_flag_count} mines + flags) = ${mine_count_adj}. There are only ${non_adjacent_tiles} non-adjacent tiles that can be mines. Global mine count must be <= ${mine_flag_count + non_adjacent_tiles}.`);
+                } else {
+                    flash_message(FLASH_ERROR, `Error: Too many mines! The global mine count is ${mine_count_adj}. There are only ${non_adjacent_tiles} non-adjacent tiles that can be mines. Global mine count must be <= ${non_adjacent_tiles}.`);
+                }
                 return;
             }
             na_denominator = non_adjacent_tiles;
