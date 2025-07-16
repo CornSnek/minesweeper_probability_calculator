@@ -293,3 +293,8 @@ a:hover{
     background-color: var(--bg-1);
     overflow: auto;
 }
+
+.img-tile {
+    width: var(--size-image);
+    height: var(--size-image);
+}

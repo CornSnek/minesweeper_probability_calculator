@@ -12,6 +12,7 @@ let tiles_palette;
 let tile_description;
 let tile_gui;
 let all_right_tabs;
+let tile_size_num;
 let columns_num;
 let rows_num;
 let generate_grid;
@@ -131,6 +132,7 @@ async function init() {
     tile_description = document.getElementById('tile-description');
     tile_gui = document.getElementById('tile-gui');
     all_right_tabs = document.getElementById('all-right-tabs');
+    tile_size_num = document.getElementById('tile-size-num');
     columns_num = document.getElementById('columns-num');
     rows_num = document.getElementById('rows-num');
     generate_grid = document.getElementById('generate-grid');
@@ -298,8 +300,10 @@ async function init() {
             tab_elem.onclick = (e) => toggle_right_tab(tab_elem, tab_id);
         }
     });
-    rows_num.onclick = deselect_tiles_f;
+    tile_size_num.onchange = tile_size_f;
+    tile_size_f();
     columns_num.onclick = deselect_tiles_f;
+    rows_num.onclick = deselect_tiles_f;
     gm_count.onclick = deselect_tiles_f;
     generate_grid.onclick = e => {
         if (web_state != STATE_IDLE) return;
@@ -402,6 +406,11 @@ function flash_message(type, message, hide_ms) {
 }
 function hide_flash() {
     flash_body.style.display = 'none';
+}
+function tile_size_f(e) {
+    const tile_size = parseInt(tile_size_num.value);
+    document.body.style.setProperty('--size-tile', `${tile_size}px`);
+    document.body.style.setProperty('--size-image', `${tile_size * 3 / 4}px`);
 }
 const worker_handler_module = {
     JSPrint,
@@ -889,9 +898,7 @@ function update_tile_div(div, use_is_clicked) {
     const img = document.createElement('img');
     div.appendChild(img);
     img.src = 'images/' + image_url;
-    const size_image = parseInt(getComputedStyle(div).getPropertyValue('--size-image'));
-    img.width = size_image;
-    img.height = size_image;
+    img.classList.add('img-tile');
 }
 function set_tile(x, y, ms_type) {
     WasmExports.SetTile(x, y, ms_type);
