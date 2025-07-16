@@ -332,6 +332,14 @@ async function init() {
         worker_handler_module[e.data[0]](...e.data.slice(1));
     };
     calculate_worker.postMessage(['m', WasmMemory]);
+    patterns_table_of_contents.textContent = '<h3>Patterns List</h3><ul>';
+    [...patterns_list.children].forEach(li => {
+        const a_id = li.id;
+        li.innerHTML += '<br><br><b><a href="#patterns-body">Back to Top</a></b>';
+        const title = li.children[0].textContent;
+        patterns_table_of_contents.textContent += `<li><b><a href="#${a_id}">${title}</a><b></li>`
+    });
+    //Adding this before li.innerHTML as it removes the .onclick listener
     document.querySelectorAll('#patterns-body .tile-template, #probability-body .tile-template').forEach(div => {
         create_board_pattern(div, div.dataset.ncolumns, div.dataset.str);
         div.onclick = e => {
@@ -339,12 +347,6 @@ async function init() {
             navigator.clipboard.writeText(copy_data).catch(err => console.warn('Clipboard copy failed: ' + err));
             flash_message(FLASH_SUCCESS, 'Copied to Clipboard', 3000);
         };
-    });
-    patterns_table_of_contents.textContent = '<h3>Patterns List</h3><ul>';
-    [...patterns_list.children].forEach(li => {
-        const a_id = li.id;
-        const title = li.children[0].textContent;
-        patterns_table_of_contents.textContent += `<li><b><a href="#${a_id}">${title}</a><b></li>`
     });
     patterns_table_of_contents.innerHTML = patterns_table_of_contents.textContent + '</ul>';
     flash_body.onclick = hide_flash;

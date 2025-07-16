@@ -223,8 +223,6 @@
         <div>
           To calculate the global probability of adjacent, the global mine count as \( M_G \) is considered, including the number of mines for each solution array \( S \) in a solution set \( SS \).
           <br>
-          Note that the global mine count is affected by the number of flags + mines. You would have to subtract all flags + mines from the mine count.
-          <br>
           Here are also other variables to define:
           \[
             \begin{array}{l}
@@ -417,8 +415,8 @@
           Thus, the formula of global probability for non-adjacent tiles is the following.
           \[
             \text{GlobalProbability}_{NA} = 
-            \sum_{ m \in S_{M_G} } \frac{
-              (M_G-m) \cdot MF_G(m)
+            \frac{
+              \displaystyle \sum_{ m \in S_{M_G} } (M_G-m) \cdot MF_G(m)
             }{
               U_{NA} \cdot ( \displaystyle \sum_{ m' \in S_{M_G} } MF_G(m') )
             }
@@ -450,10 +448,10 @@
           The boundaries also affect the probability of non-adjacent tiles as well, affecting the probability and weight sum calculations.
           \[
             \text{GlobalProbability}_{NA} = 
-            \sum_{ m \in S_{M_G} \text{ | } m \le M_G \text{ and } M_G \le m + U_{NA} } \frac{
-              (M_G-m) \cdot MF_G(m)
+            \frac{
+              \displaystyle \sum_{ m \in S_{M_G} \text{ | } m \le M_G \text{ and } M_G \le m + U_{NA} } (M_G-m) \cdot MF_G(m)
             }{
-              U_{NA} \cdot ( \displaystyle \sum_{ m' \in S_{M_G} \text{ | } m' \le M_G \text{ and } M_G \le m' + U_{NA} } MF_G(m') )
+              U_{NA} \left( \displaystyle \sum_{ m' \in S_{M_G} \text{ | } m' \le M_G \text{ and } M_G \le m' + U_{NA} } MF_G(m') \right)
             }
           \]
           Note, that if the global mine count is less than all known solution mine numbers, then the program will throw an error of 'Too little mines!'.
@@ -703,7 +701,10 @@
         board to see the probability calculations.
         <br>
         <br>
-        Note: These aren't official names for these patterns. For more information and the logic on these patterns, see
+        Note: These aren't official names for these patterns. 
+        This is mostly just a catalog of patterns that I see throughout the game and the safe/mine tile placements are guaranteed, and I don't have to think about too much of the logic of why it does these patterns.
+        <br>
+        For more information, comprehension, and the logic for some of these patterns, see
         <b><a href="https://minesweeper.online/help/patterns" target="_blank"
             rel="noopener noreferrer">https://minesweeper.online/help/patterns</a></b>, <b><a
             href="https://computronium.org/minesweeper/index.html" target="_blank"
@@ -715,7 +716,8 @@
           <li id="patterns-empty">
             <h3>Number of Empty Spaces = Number of Mines</h3>
             <div>
-              This is a common pattern that you will see. Here is a corner 1. Since all spaces but the bottom right is
+              This is a common pattern that you will see. Any time there is a number and the number of spaces is equal to its number, those spaces must be mines.
+              <br><br>For example, here is a corner 1. Since all spaces but the bottom right is
               filled as safe, the bottom right tile must be a mine.
               <div class="tile-template" data-ncolumns="5" data-str="ccccc,cxxxc,cx1xc,cxxv.c,ccccc,"></div>
               <br>
@@ -736,7 +738,7 @@
               and the 2 unknown tiles above must be mines.
               <div class="tile-template" data-ncolumns="5" data-str="cxv.v.c,cx3xc,cx1fc,xx1xx,"></div>
               <br>
-              Reducing numbers is then combined with other patterns. For example, here a wall of 3-3-2 is a disguised
+              Reducing numbers also causes other patterns to show up. For example, here a wall of 3-3-2 is a disguised
               <b><a href="#patterns-121">1-2-1</a></b> pattern. The tiles above the 1s must be mines.
               <div class="tile-template" data-ncolumns="6" data-str="c.v.c.v.c.c.,f3322x,f21f10,111110,000000,"></div>
             </div>
@@ -801,7 +803,7 @@
               and are touching the corner of the 1s.
               <div class="tile-template" data-ncolumns="6" data-str="c.c.v.v.c.c.,c.1221c.,c.x00xc.,cxxxxc,"></div>
               <br>
-              Here is an example of a disguised <a href="#patterns-1221">1-2-2-1</a> with the Flag Number Reduction pattern. The 1-2-3-3 column with
+              Here is an example of a disguised 1-2-2-1 with the <b><a href="#patterns-fnr">Flag Number Reduction</a></b> pattern. The 1-2-3-3 column with
               the flags become a 1-2-2-1. Note: The mines could be in either side, but all the sides not near the 2s on
               the left/right are safe.
               <div class="tile-template" data-ncolumns="3" data-str="c.c.c.,c.1c.,c2c,c3c,f3c.,fc.c.,"></div>
@@ -814,8 +816,8 @@
               the 3.
               <div class="tile-template" data-ncolumns="4" data-str="c.ccv.,x13c,xx1c,xxxc.,"></div>
               <br>
-              The 1-3-1 corner can also have just have, in minimum, just the 3 tiles itself. This can result in more safe tiles.
-              The reasoning is that the 2 mines between the 3 and 1s must be there.
+              The 1-3-1 corner can also have just have, in minimum, just the 3 tiles itself to apply the pattern. This can result in more safe tiles.
+              The reasoning is that the 2 mines between the 3 and 1s must be there. The tile bottom right of the 3 being safe is due to <b><a href="#patterns-contradiction">Proof By Contradiction</a></b>.
               <div class="tile-template" data-ncolumns="4" data-str="v.ccc.,c31c.,c1c.c.,c.c.c.c,"></div>
             </div>
           </li>
@@ -823,7 +825,7 @@
             <h3>2-2-2 Corner</h3>
             <div>
               This pattern does the inverse of the <b><a href="#patterns-131c">1-3-1 Corner</a></b> pattern, where safe tiles are mines, and the mine
-              tile is safe.
+              tile is safe. Note that the 5 safe tiles are required for this pattern to be applied properly.
               <div class="tile-template" data-ncolumns="4" data-str="v.ccc.,x22c,xx2c,cxxv.,"></div>
             </div>
           </li>
@@ -831,7 +833,7 @@
             <h3>2D 1-1, 2-2, 3-3</h3>
             <div>
               For this pattern, generally if the number is the same as the left (1, 2, or 3), then the 3 tiles on the
-              right must be safe.
+              right must be safe. The safe x tiles can also be the edge of the board.
               <div class="tile-template" data-ncolumns="14"
                 data-str="xccc.cxccc.cxv.v.c.,x11c.cx22c.cx33c.,xxcc.cxxcc.cxxv.c.,xxcccxxcccxxcc,"></div>
               <br>
@@ -873,11 +875,11 @@
             <h3>1-3 and 1-4</h3>
             <div>
               These are similar to the <b><a href="#patterns-12">1-2 Pattern</a></b>, where the tiles left of the 1 must be safe, and the other
-              tiles on the right must be mines. 1-3 must have 1 tile not touching 1 blocked, and 1-4 just have all 3 mines not touching 1.
+              tiles on the right must be mines. 1-3 must have 1 tile not touching 1 blocked (For example, the X safe tile on the bottom right), and 1-4 just have all 3 mines not touching 1.
               <br>
               <br>
               Example of 1-3:
-              <div class="tile-template" data-ncolumns="4" data-str="c.ccv.,c.13v.,c.xxx,xxxx,"></div>
+              <div class="tile-template" data-ncolumns="4" data-str="c.ccv.,c.13v.,c.xxx,xxxc,"></div>
               <br>
               Example of 1-4:
               <div class="tile-template" data-ncolumns="4" data-str="c.ccv.,c.14v.,c.xxv.,xxxc,"></div>
@@ -911,10 +913,20 @@
               </div>
             </div>
           </li>
+          <li id="patterns-2d-122113322442">
+            <h3>2D 1-2-2-1, 1-3-3-2, and 2-4-4-2</h3>
+            <div>
+              These are similar to the <b><a href="#patterns-2d-121132242">2D 1-2-1, 1-3-2, and 2-4-2</a></b> patterns, although they are not so common except 1-2-2-1.
+              For the 1-2-2-1, the mines may be on just one side of the 2s, while the 1s are safe.<br>2-4-4-2, although not common, behaves similarly to the 2-4-2 pattern, but the mines are near the 4s.<br>And finally, 2-3-3-1 behaves similarly to the 2-3-1 pattern, but the 3 next to the 2 is guaranteed to have both mines on its side while the 3 next to the 1 have just 1 mine next to its side.
+              <div class="tile-template" data-ncolumns="11"
+                data-str="c.c.ccc.c.ccccc,c.1221c.ccccc,c.c.ccc.c.ccccc,c.c.v.v.c.c.cc.c.v.v.,c.2442c.cc.244,c.c.v.v.c.c.cc.c.v.v.,c.c.v.cc.c.cc.c.cv.,c.2331c.cc.133,c.c.v.cc.c.cc.c.cv.,">
+              </div>
+            </div>
+          </li>
           <li id="patterns-disguised-1s">
             <h3>1-1-1 and 1-1-1-1</h3>
             <div>
-              Using the <b><a href="#patterns-fnr">Flag Number Reduction</a></b> pattern, these patterns are disguised, but behave similarly to the
+              Using the <b><a href="#patterns-fnr">Flag Number Reduction</a></b> pattern, these patterns are usually disguised, but behave similarly to the
               <b><a href="#patterns-121">1-2-1</a></b> and <b><a href="#patterns-1221">1-2-2-1</a></b> pattern. However, the mine and safe tiles for 1-2-1 and 1-2-2-1 are
               inversed for 1-1-1 and 1-1-1-1.
               <br>
@@ -923,6 +935,8 @@
               <br>
               Here is an example of a disguised 1-1-1-1
               <div class="tile-template" data-ncolumns="3" data-str="xfx,v.2x,c.1x,c.1x,v.4x,fff,"></div>
+              <br>
+              When in doubt if the pattern is applied, you can use <b><a href="#patterns-contradiction">Proof by Contradiction</a></b> to see if the tiles are safe or mines.
             </div>
           </li>
           <li id="patterns-shared-mines">
@@ -963,7 +977,8 @@
           <li id="patterns-contradiction">
             <h3>Proof By Contradiction</h3>
             <div>
-              Sometimes, you might have to assume a tile is a mine or safe. If the assumption contradicts for all solutions possible, then the tile must be the opposite of the assumption instead.
+              Sometimes you might have to assume a tile is a mine or safe, especially if there are no more patterns to see in a No Guess minesweeper mode (A mode where a board is always solvable, and you do not have to guess).
+              <br>If the assumption contradicts for all solutions possible, then the tile must be the opposite of the assumption instead.
               <br>
               Here is an example of proof by contradiction.
               <div class="tile-template" data-ncolumns="6" data-str="cxxffc,ff4c(1)fx,xf5c(2)3x,xfc(3)2fx,xxcxxx,"></div>
@@ -971,7 +986,6 @@
               Let's assume that tile (2) is a mine tile. This makes tile (1) and (3) safe tiles. However, a contradiction happens because the 5 tile has only 4 flags and is underflagged.
               Due to this, (2) must be a safe tile instead as shown below. This also causes (1) and (3) to be mine tiles instead.
               <div class="tile-template" data-ncolumns="6" data-str="cxxffc,ff4v.fx,xf5c.3x,xfv.2fx,xxc.xxx,"></div>
-              <br><br>
             </div>
           </li>
         </ul>
