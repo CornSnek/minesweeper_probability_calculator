@@ -408,7 +408,8 @@ function hide_flash() {
     flash_body.style.display = 'none';
 }
 function tile_size_f(e) {
-    const tile_size = parseInt(tile_size_num.value);
+    const tile_size = Math.min(Math.max(parseInt(tile_size_num.value), 20), 100);
+    tile_size_num.value = tile_size;
     document.body.style.setProperty('--size-tile', `${tile_size}px`);
     document.body.style.setProperty('--size-image', `${tile_size * 3 / 4}px`);
 }
