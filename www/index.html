@@ -69,12 +69,14 @@
       Calculate Probability <strong class="badge">Shift</strong>+<strong class="badge">Enter</strong>
     </div>
     <div>
-      <label for="show-solution-check">Check Solutions</label>
+      <label for="show-solution-check">Solutions</label>
       <input type="checkbox" id="show-solution-check" disabled>
       <label for="show-solution-seed">Configuration</label>
       <input id="show-solution-seed" type="number" value="0" step="1" min="0" size="10" disabled>
       <label for="show-solution-subsystem">Subsystem</label>
       <input id="show-solution-subsystem" type="number" value="0" min="0" size="3" disabled>
+      <br>
+      <div id="show-solution-output"></div>
     </div>
     <div id="parse-screenshot-popup" class="tabs-button">
       Parse Minesweeper Screenshot
@@ -149,7 +151,7 @@
         This website can also parse screenshots of minesweeper boards. To try this feature, drag a minesweeper screenshot, input the width of the board and crop only the board available, and press 'Parse Screenshot'.
         <br>Note: If you properly cropped the picture, it may still be inaccurate in its predictions, so you will have to check your screenshot for any incorrect tiles. 
         <br><br>
-        You can also check the mine configurations or valid solutions by checking the Check Solutions checkbox. This will try to show every single mine configuration possible for a particular subsystem or subboard.
+        You can also check the mine configurations or valid solutions by checking the Solutions checkbox. This will try to show every single mine configuration possible for a particular subsystem or subboard.
       </div>
     </div>
     <div id="probability-tab" class="options-gui panel-hide-right">

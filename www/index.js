@@ -35,6 +35,7 @@ let flood_fill;
 let show_solution_check;
 let show_solution_seed;
 let show_solution_subsystem;
+let show_solution_output;
 let rows = null;
 let columns = null;
 let keybind_map = new Map();
@@ -169,6 +170,7 @@ async function init() {
     show_solution_check = document.getElementById('show-solution-check');
     show_solution_seed = document.getElementById('show-solution-seed');
     show_solution_subsystem = document.getElementById('show-solution-subsystem');
+    show_solution_output = document.getElementById('show-solution-output');
     const root_comp = getComputedStyle(document.documentElement);
     tile_colors.neutral = root_comp.getPropertyValue('--ms-probability');
     tile_colors.mine = root_comp.getPropertyValue('--ms-probability-mine');
@@ -336,7 +338,7 @@ async function init() {
     show_solution_subsystem.onchange = show_solution_f;
     show_solution_check.onchange = e => {
         show_solution_disable(!show_solution_check.checked);
-        if(show_solution_check.checked) show_solution_f(e);
+        if (show_solution_check.checked) show_solution_f(e);
     }
     document.addEventListener('paste', e => selected_tile.paste_text_clipboard(e.clipboardData.getData('text')));
     document.body.style.marginRight = `${all_right_tabs.offsetWidth}px`;
@@ -438,11 +440,18 @@ let last_subsystem_used = null;
 function show_solution_disable(bool) {
     show_solution_subsystem.disabled = bool;
     show_solution_seed.disabled = bool;
-    if (bool && last_subsystem_used !== null)
-        solution_bits.clear_solution(last_subsystem_used);
+    if (bool) {
+        if (last_subsystem_used !== null)
+            solution_bits.clear_solution(last_subsystem_used);
+        show_solution_output.style.display = 'hidden';
+    } else {
+        show_solution_output.textContent = '';
+        show_solution_output.style.display = 'initial';
+    }
 }
 function show_solution_f(e) {
     if (web_state == STATE_IDLE) {
+        deselect_tiles_f();
         if (!show_solution_seed.validity.valid || !show_solution_subsystem.validity.valid) return;
         const solution_id = parseInt(show_solution_seed.value);
         const subsystem_id = parseInt(show_solution_subsystem.value);
@@ -1301,6 +1310,7 @@ class SolutionBits {
         const solution_arr = [];
         const sb_arr = new DataView(WasmMemory.buffer, sb_ptr, 4 * sb_len);
         for (let nb_i = 0; nb_i < sb_num_bytes; nb_i++) solution_arr.push(sb_arr.getUint32(4 * (solution_i * sb_num_bytes + nb_i), true));
+        let num_mines = 0;
         for (let byte_i = 0; byte_i < sb_num_bytes; byte_i++) {
             for (let bit_i = 0; bit_i < 32; bit_i++) {
                 const tile_i = byte_i * 32 + bit_i;
@@ -1309,11 +1319,13 @@ class SolutionBits {
                 const bit_mask = 1 << bit_i;
                 div.classList.remove('tile-solution-mine');
                 div.classList.remove('tile-solution-clear');
-                (bit_mask & solution_arr[byte_i]) != 0
-                    ? div.classList.add('tile-solution-mine')
-                    : div.classList.add('tile-solution-clear');
+                if((bit_mask & solution_arr[byte_i]) != 0) {
+                    div.classList.add('tile-solution-mine')
+                    num_mines += 1;
+                } else div.classList.add('tile-solution-clear');
             }
         }
+        show_solution_output.textContent = `${num_mines} mines(s)`;
     }
 }
 let solution_bits = new SolutionBits();
