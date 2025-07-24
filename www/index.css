@@ -32,8 +32,9 @@ a {
     padding: inherit;
     text-decoration: none;
 }
-a:hover{
-    color:#BF0000;
+
+a:hover {
+    color: #BF0000;
 }
 
 .tile-template,
@@ -61,6 +62,9 @@ a:hover{
     cursor: pointer;
     font-size: calc(var(--size-image) * 0.5);
     color: black;
+    background-repeat: no-repeat;
+    background-size: var(--size-image);
+    background-position: center;
 }
 
 .tile.tile-clicked {
@@ -83,9 +87,6 @@ a:hover{
     color: black;
     background-color: var(--ms-probability);
     background-image: url('images/pb_unknown.svg');
-    background-repeat: no-repeat;
-    background-size: var(--size-image);
-    background-position: center;
 }
 
 .tile.tile-pb-color {
@@ -98,18 +99,25 @@ a:hover{
     color: white;
     background-color: var(--ms-probability-mine);
     background-image: url('images/mine_transp.svg');
-    background-repeat: no-repeat;
-    background-size: var(--size-image);
-    background-position: center;
 }
 
 .tile.tile-pb-clear {
     color: white;
     background-color: var(--ms-probability-clear);
     background-image: url('images/x_transp.svg');
-    background-repeat: no-repeat;
-    background-size: var(--size-image);
-    background-position: center;
+}
+
+.tile.tile-solution-mine {
+    color: #FFFFFF9F;
+    text-shadow: 1px 1px #0000009F;
+    background-color: var(--ms-probability-mine);
+    background-image: url('images/mine.svg');
+    background-blend-mode:multiply
+}
+
+.tile.tile-solution-clear {
+    color: #0000007F;
+    background-image: none;
 }
 
 .tile.tile-pb-error {

@@ -1,7 +1,8 @@
 import {
     PrintType, MsType, CalculateArray,
     CalculateStatus, Calculate, ProbabilityList,
-    LocationCount, IDToLocationExtern, TileLocation, MineFrequency
+    LocationCount, IDToLocationExtern, TileLocation,
+    MineFrequency, SolutionBitsExtern
 } from './wasm_to_js.js'
 let WasmObj = null;
 let WasmExports = null;
@@ -20,7 +21,6 @@ let calculate_probability;
 let clear_probability_button;
 let clear_all_button;
 let matrix_results_text;
-let show_results_check;
 let progress_div;
 let calculate_progress;
 let subsystem_progress;
@@ -32,6 +32,9 @@ let include_flags;
 let patterns_list;
 let patterns_table_of_contents;
 let flood_fill;
+let show_solution_check;
+let show_solution_seed;
+let show_solution_subsystem;
 let rows = null;
 let columns = null;
 let keybind_map = new Map();
@@ -141,7 +144,6 @@ async function init() {
     clear_probability_button = document.getElementById('clear-probability-button');
     clear_all_button = document.getElementById('clear-all-button');
     matrix_results_text = document.getElementById('matrix-results-text');
-    show_results_check = document.getElementById('show-results-check');
     calculate_progress = document.getElementById('calculate-progress');
     subsystem_progress = document.getElementById('subsystem-progress');
     progress_div = document.getElementById('progress-div');
@@ -164,6 +166,9 @@ async function init() {
     cancel_parse_screenshot = document.getElementById('cancel-parse-screenshot');
     board_width_size = document.getElementById('board-width-size');
     upload_output = document.getElementById('upload-output');
+    show_solution_check = document.getElementById('show-solution-check');
+    show_solution_seed = document.getElementById('show-solution-seed');
+    show_solution_subsystem = document.getElementById('show-solution-subsystem');
     const root_comp = getComputedStyle(document.documentElement);
     tile_colors.neutral = root_comp.getPropertyValue('--ms-probability');
     tile_colors.mine = root_comp.getPropertyValue('--ms-probability-mine');
@@ -327,6 +332,12 @@ async function init() {
     }
     clear_probability_button.onclick = clear_all_probability;
     clear_all_button.onclick = clear_all_tiles;
+    show_solution_seed.onchange = show_solution_f;
+    show_solution_subsystem.onchange = show_solution_f;
+    show_solution_check.onchange = e => {
+        show_solution_disable(!show_solution_check.checked);
+        if(show_solution_check.checked) show_solution_f(e);
+    }
     document.addEventListener('paste', e => selected_tile.paste_text_clipboard(e.clipboardData.getData('text')));
     document.body.style.marginRight = `${all_right_tabs.offsetWidth}px`;
     document.body.style.marginBottom = `${tile_gui.offsetHeight}px`;
@@ -423,6 +434,27 @@ const worker_handler_module = {
     parse_probability_list,
     do_print,
 };
+let last_subsystem_used = null;
+function show_solution_disable(bool) {
+    show_solution_subsystem.disabled = bool;
+    show_solution_seed.disabled = bool;
+    if (bool && last_subsystem_used !== null)
+        solution_bits.clear_solution(last_subsystem_used);
+}
+function show_solution_f(e) {
+    if (web_state == STATE_IDLE) {
+        if (!show_solution_seed.validity.valid || !show_solution_subsystem.validity.valid) return;
+        const solution_id = parseInt(show_solution_seed.value);
+        const subsystem_id = parseInt(show_solution_subsystem.value);
+        if (e.target === show_solution_subsystem) {
+            if (last_subsystem_used !== subsystem_id && last_subsystem_used !== null)
+                solution_bits.clear_solution(last_subsystem_used);
+            show_solution_seed.value = 0;
+        }
+        last_subsystem_used = subsystem_id;
+        solution_bits.show_solution(subsystem_id, solution_id);
+    }
+}
 function toggle_right_tab(tab_elem, tab_id) {
     deselect_tiles_f();
     const tab = document.getElementById(tab_id);
@@ -463,6 +495,9 @@ document.addEventListener('DOMContentLoaded', init);
 function init_grid(num_columns, num_rows) {
     console.assert(num_columns > 0 && num_rows > 0, 'num_columns and num_rows should be greater than 0');
     deselect_tiles_f();
+    show_solution_check.disabled = true;
+    show_solution_disable(true);
+    last_subsystem_used = null;
     undo_queue.clear();
     rows = num_rows;
     columns = num_columns;
@@ -923,6 +958,9 @@ function calculate_probability_f(e) {
         calculate_worker.postMessage(['f', 'CalculateProbability']);
         SetTimeoutProgress(0, 0.0);
         calculate_probability.innerHTML = `Cancel Calculation ${shift_p_enter}`;
+        show_solution_check.disabled = true;
+        show_solution_disable(true);
+        last_subsystem_used = null;
     } else if (web_state == STATE_CALCULATING) {
         Atomics.store(new Uint8Array(WasmMemory.buffer), WasmExports.CancelCalculation.value, 1);
         flash_message(FLASH_ERROR, 'Cancelled Calculation');
@@ -946,6 +984,8 @@ function clear_probability(div) {
     div.textContent = '';
     div.classList.remove('tile-pb-mine');
     div.classList.remove('tile-pb-clear');
+    div.classList.remove('tile-solution-mine');
+    div.classList.remove('tile-solution-clear');
     div.classList.remove('tile-pb-error');
     div.classList.remove('tile-pb-color');
     div.style.removeProperty('--tile-color');
@@ -1210,14 +1250,83 @@ function comb(n, r) {
     return res;
 }
 let mfg_list = new MFGList(0);
+class SolutionBits {
+    constructor() {
+        this.calc_ptrs = [];
+        this.tiles = [];
+    }
+    append_calc_ptr(calc_ptr) {
+        this.calc_ptrs.push(calc_ptr);
+    }
+    get_tiles(subsystem_i) {
+        console.assert(subsystem_i !== undefined && this.calc_ptrs[subsystem_i] !== null, `this.calc_ptrs[subsystem_i] or subsystem_i is empty`);
+        if (this.tiles[subsystem_i] !== undefined) return this.tiles[subsystem_i];
+        while (this.tiles.length <= subsystem_i) this.tiles.push(undefined);
+        const pl = new DataView(WasmMemory.buffer, this.calc_ptrs[subsystem_i] + Calculate.pl.offset, ProbabilityList.$size);
+        const lc_ptr = pl.getUint32(ProbabilityList.lc_ptr.offset, true);
+        const lc_len = pl.getUint32(ProbabilityList.lc_len.offset, true);
+        const lc = new DataView(WasmMemory.buffer, lc_ptr, lc_len * LocationCount.$size);
+        this.tiles[subsystem_i] = [];
+        for (let lc_i = 0; lc_i < lc_len; lc_i++) {
+            const x = lc.getUint32(lc_i * LocationCount.$size + LocationCount.x.offset, true);
+            const y = lc.getUint32(lc_i * LocationCount.$size + LocationCount.y.offset, true);
+            this.tiles[subsystem_i].push(new TilePoint(x, y));
+        }
+        return this.tiles[subsystem_i];
+    }
+    clear_solution(subsystem_i) {
+        const tiles = this.get_tiles(subsystem_i);
+        for (let tile_i = 0; tile_i < tiles.length; tile_i++) {
+            const div = grid_body.children[tiles[tile_i].y * columns + tiles[tile_i].x];
+            div.classList.remove('tile-solution-mine');
+            div.classList.remove('tile-solution-clear');
+        }
+    }
+    show_solution(subsystem_i, solution_i) {
+        console.assert(this.calc_ptrs[subsystem_i] !== null, `this.calc_ptrs[subsystem_i] empty`);
+        const sb = new DataView(WasmMemory.buffer, this.calc_ptrs[subsystem_i] + Calculate.sb.offset, SolutionBitsExtern.$size);
+        const sb_ptr = sb.getUint32(SolutionBitsExtern.ptr.offset, true);
+        const sb_len = sb.getUint32(SolutionBitsExtern.len.offset, true);
+        const sb_num_bytes = sb.getUint32(SolutionBitsExtern.number_bytes.offset, true);
+        const tiles = this.get_tiles(subsystem_i);
+        show_solution_seed.max = sb_len / sb_num_bytes - 1;
+        if (solution_i >= sb_len / sb_num_bytes) {
+            for (let tile_i = 0; tile_i < tiles.length; tile_i++) {
+                const div = grid_body.children[tiles[tile_i].y * columns + tiles[tile_i].x];
+                div.classList.remove('tile-solution-mine');
+                div.classList.remove('tile-solution-clear');
+            }
+            return;
+        }
+        const solution_arr = [];
+        const sb_arr = new DataView(WasmMemory.buffer, sb_ptr, 4 * sb_len);
+        for (let nb_i = 0; nb_i < sb_num_bytes; nb_i++) solution_arr.push(sb_arr.getUint32(4 * (solution_i * sb_num_bytes + nb_i), true));
+        for (let byte_i = 0; byte_i < sb_num_bytes; byte_i++) {
+            for (let bit_i = 0; bit_i < 32; bit_i++) {
+                const tile_i = byte_i * 32 + bit_i;
+                if (tile_i >= tiles.length) break;
+                const div = grid_body.children[tiles[tile_i].y * columns + tiles[tile_i].x];
+                const bit_mask = 1 << bit_i;
+                div.classList.remove('tile-solution-mine');
+                div.classList.remove('tile-solution-clear');
+                (bit_mask & solution_arr[byte_i]) != 0
+                    ? div.classList.add('tile-solution-mine')
+                    : div.classList.add('tile-solution-clear');
+            }
+        }
+    }
+}
+let solution_bits = new SolutionBits();
 function parse_probability_list(c_arr_ptr) {
     end_progress();
     deselect_tiles_f();
     clear_all_probability();
-    if (show_results_check.checked) {
-        const results_tab_button = document.getElementById('results-tab-button');
-        toggle_right_tab(results_tab_button, 'results-tab');
-    }
+    show_solution_check.disabled = false;
+    show_solution_check.checked = false;
+    show_solution_seed.value = 0;
+    show_solution_subsystem.value = 0;
+    last_subsystem_used = null;
+    solution_bits = new SolutionBits();
     const calc_arr = new DataView(WasmMemory.buffer, c_arr_ptr, CalculateArray.$size);
     const calc_arr_status = calc_arr.getUint8(CalculateArray.status.offset, true);
     if (calc_arr_status == CalculateStatus.ok) {
@@ -1225,13 +1334,15 @@ function parse_probability_list(c_arr_ptr) {
         const ca_ptr = calc_arr.getUint32(CalculateArray.ptr.offset, true);
         const ca_len = calc_arr.getUint32(CalculateArray.len.offset, true);
         mfg_list = new MFGList(ca_len);
-        let ca;
+        let calc;
         //ca_ptr is 'undefined' in zig when ca_len is 0.
-        if (ca_len !== 0) ca = new DataView(WasmMemory.buffer, ca_ptr, Calculate.$size * ca_len);
+        if (ca_len !== 0) calc = new DataView(WasmMemory.buffer, ca_ptr, Calculate.$size * ca_len);
+        show_solution_subsystem.max = Math.max(ca_len - 1, 0);
         for (let ca_i = 0; ca_i < ca_len; ca_i++) {
-            const calc_status = ca.getUint8(ca_i * Calculate.$size + Calculate.status.offset, true);
+            const calc_status = calc.getUint8(ca_i * Calculate.$size + Calculate.status.offset, true);
             const calc_ptr = ca_ptr + ca_i * Calculate.$size;
             if (calc_status == CalculateStatus.ok) {
+                solution_bits.append_calc_ptr(calc_ptr);
                 const pl = new DataView(WasmMemory.buffer, calc_ptr + Calculate.pl.offset, ProbabilityList.$size);
                 const total_solutions = pl.getUint32(ProbabilityList.total.offset, true);
                 const lc_ptr = pl.getUint32(ProbabilityList.lc_ptr.offset, true);

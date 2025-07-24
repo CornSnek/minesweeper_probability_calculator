@@ -243,6 +243,7 @@ export fn CalculateProbability() [*c]shared.CalculateArray {
                     .pl = pl,
                     .status = .ok,
                     .tm = this_mm.tm.get_id_to_location_extern(),
+                    .sb = this_mm.sb.get_solution_bits_extern(),
                 };
                 this_mm_str.writer(wasm_allocator).print("<br>", .{}) catch {};
             } else {

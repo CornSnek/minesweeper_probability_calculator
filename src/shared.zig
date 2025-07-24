@@ -22,16 +22,18 @@ pub const CalculateStatus = enum(u8) {
 };
 pub const TileLocation = @import("minesweeper.zig").TileLocation;
 pub const IDToLocationExtern = @import("minesweeper.zig").TileMap.IDToLocationExtern;
+pub const SolutionBitsExtern = @import("minesweeper.zig").SolutionBits.SolutionBitsExtern;
 pub const LocationCount = @import("minesweeper.zig").MinesweeperMatrix.LocationCount;
 pub const MineFrequency = @import("minesweeper.zig").MinesweeperMatrix.MineFrequency;
 pub const ProbabilityList = @import("minesweeper.zig").MinesweeperMatrix.ProbabilityList;
 pub const Calculate = extern struct {
     tm: IDToLocationExtern,
     pl: ProbabilityList,
+    sb: SolutionBitsExtern,
     status: CalculateStatus,
     pub fn init_error(status: CalculateStatus) Calculate {
         @import("std").debug.assert(status != .ok);
-        return .{ .tm = .empty, .pl = .empty, .status = status };
+        return .{ .tm = .empty, .pl = .empty, .sb = .empty, .status = status };
     }
     pub fn deinit(self: Calculate, allocator: @import("std").mem.Allocator) void {
         if (self.status == .ok) {

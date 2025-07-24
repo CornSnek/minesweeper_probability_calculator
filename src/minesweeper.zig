@@ -325,11 +325,29 @@ pub const TileMap = struct {
         self.idtol.deinit(allocator);
     }
 };
+pub const SolutionBits = struct {
+    data: std.ArrayListUnmanaged(u32),
+    number_bytes: u32,
+    pub const empty: SolutionBits = .{ .data = .empty, .number_bytes = 0 };
+    pub const SolutionBitsExtern = extern struct {
+        ptr: [*c]u32,
+        len: usize,
+        number_bytes: u32,
+        pub const empty: SolutionBitsExtern = .{ .ptr = 0, .len = 0, .number_bytes = 0 };
+    };
+    pub fn get_solution_bits_extern(self: SolutionBits) SolutionBitsExtern {
+        return .{ .ptr = self.data.items.ptr, .len = self.data.items.len, .number_bytes = self.number_bytes };
+    }
+    pub fn deinit(self: *SolutionBits, allocator: std.mem.Allocator) void {
+        self.data.deinit(allocator);
+    }
+};
 /// All LinearCombination must have .alloc_all true and valid order (.id from ascending order with exactly one null).
 pub const MinesweeperMatrix = struct {
-    lcs: std.ArrayListUnmanaged(LinearCombination) = .empty,
-    tm: TileMap = .empty,
-    pub const empty: MinesweeperMatrix = .{};
+    lcs: std.ArrayListUnmanaged(LinearCombination),
+    tm: TileMap,
+    sb: SolutionBits,
+    pub const empty: MinesweeperMatrix = .{ .lcs = .empty, .tm = .empty, .sb = .empty };
     pub fn append(self: *MinesweeperMatrix, allocator: std.mem.Allocator, lc: LinearCombination) !void {
         if (!lc.alloc_all) return error.MustBeAllocated;
         if (!lc.valid_order()) return error.MustBeValidLC;
@@ -639,9 +657,10 @@ pub const MinesweeperMatrix = struct {
             defer bui_free_max.deinit(allocator);
             var bui_free_counter: big_number.BigUInt = try .init(allocator, 0);
             defer bui_free_counter.deinit(allocator);
-            try bui_free_max.pad(allocator, total_free_count / 8 + 1);
-            try bui_free_counter.pad(allocator, total_free_count / 8 + 1);
+            try bui_free_max.pad(allocator, (total_free_count + 31) / 32);
+            try bui_free_counter.pad(allocator, (total_free_count + 31) / 32);
             bui_free_max.set(total_free_count);
+            self.sb.number_bytes = (self.tm.idtol.items.len + 31) / 32;
             var total: usize = 0;
             while (bui_free_counter.order(bui_free_max) != .eq) : (try bui_free_counter.add_one(allocator)) {
                 if (UsingWasm) {
@@ -656,11 +675,12 @@ pub const MinesweeperMatrix = struct {
                 }
                 var bui_solution: big_number.BigUInt = try .init(allocator, 0);
                 defer bui_solution.deinit(allocator);
-                try bui_solution.pad(allocator, self.tm.idtol.items.len / 8 + 1);
+                try bui_solution.pad(allocator, self.sb.number_bytes);
                 for (free_map.items, 0..) |offset, i| //Set bit of free variables to 1 (mine) if bui_free_counter is 1.
                     if (bui_free_counter.bit(i))
                         bui_solution.set(offset);
                 if (try self.verify_solution(allocator, &bui_solution)) {
+                    try self.sb.data.appendSlice(allocator, bui_solution.bytes.items);
                     for (0..self.tm.idtol.items.len) |id|
                         mines_value_list.items[id] += @intFromBool(bui_solution.bit(id));
                     if (UsingWasm) {
@@ -774,6 +794,7 @@ pub const MinesweeperMatrix = struct {
             lc.deinit(allocator);
         }
         self.lcs.deinit(allocator);
+        self.sb.deinit(allocator);
     }
 };
 /// LinearCombination.ids Ordered from 0, 1, 2,... n and then null as number of mines
