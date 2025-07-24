@@ -326,9 +326,16 @@ pub const TileMap = struct {
     }
 };
 pub const SolutionBits = struct {
+    ///Index from begin to end (End is not included)
+    pub const SolutionBitsRange = extern struct {
+        pc: usize,
+        begin: usize,
+        end: usize,
+    };
     data: std.ArrayListUnmanaged(u32),
+    metadata: std.ArrayListUnmanaged(SolutionBitsRange),
     number_bytes: u32,
-    pub const empty: SolutionBits = .{ .data = .empty, .number_bytes = 0 };
+    pub const empty: SolutionBits = .{ .data = .empty, .metadata = .empty, .number_bytes = 0 };
     pub const SolutionBitsExtern = extern struct {
         ptr: [*c]u32,
         len: usize,
@@ -338,7 +345,50 @@ pub const SolutionBits = struct {
     pub fn get_solution_bits_extern(self: SolutionBits) SolutionBitsExtern {
         return .{ .ptr = self.data.items.ptr, .len = self.data.items.len, .number_bytes = self.number_bytes };
     }
+    pub fn append(self: *SolutionBits, allocator: std.mem.Allocator, bui: big_number.BigUInt) !void {
+        std.debug.assert(bui.bytes.items.len == self.number_bytes);
+        const pc = bui.pop_count();
+        var metadata_i: usize = 0;
+        var last_md: *const SolutionBitsRange = &.{ .pc = undefined, .begin = undefined, .end = 0 }; //First append
+        while (metadata_i != self.metadata.items.len) : (metadata_i += 1) {
+            last_md = &self.metadata.items[metadata_i];
+            if (pc == last_md.pc)
+                break;
+            if (pc < last_md.pc) { //Insert between this range between the last greater one.
+                try self.metadata.insert(allocator, metadata_i, .{ .pc = pc, .begin = last_md.begin, .end = last_md.begin });
+                break;
+            }
+        } else {
+            try self.metadata.append(allocator, .{ .pc = pc, .begin = last_md.end, .end = last_md.end });
+            metadata_i = self.metadata.items.len - 1;
+        }
+        const len = self.metadata.items.len;
+        if (metadata_i == len - 1) {
+            self.metadata.items[len - 1].end += 1;
+            try self.data.appendSlice(allocator, bui.bytes.items);
+        } else { //Insert each greater metadata_i from its .end using its .begin until it reaches the exact metadata_i to insert at its .end only
+            try self.data.appendNTimes(allocator, undefined, self.number_bytes);
+            var last_metadata_i = len - 1;
+            while (last_metadata_i != metadata_i) {
+                const md = &self.metadata.items[last_metadata_i];
+                @memcpy(
+                    self.data.items[md.end * self.number_bytes .. md.end * self.number_bytes + self.number_bytes],
+                    self.data.items[md.begin * self.number_bytes .. md.begin * self.number_bytes + self.number_bytes],
+                );
+                md.begin += 1;
+                md.end += 1;
+                last_metadata_i -= 1;
+            }
+            const md = &self.metadata.items[last_metadata_i];
+            @memcpy(
+                self.data.items[md.end * self.number_bytes .. md.end * self.number_bytes + self.number_bytes],
+                bui.bytes.items,
+            );
+            md.end += 1;
+        }
+    }
     pub fn deinit(self: *SolutionBits, allocator: std.mem.Allocator) void {
+        self.metadata.deinit(allocator);
         self.data.deinit(allocator);
     }
 };
@@ -680,7 +730,7 @@ pub const MinesweeperMatrix = struct {
                     if (bui_free_counter.bit(i))
                         bui_solution.set(offset);
                 if (try self.verify_solution(allocator, &bui_solution)) {
-                    try self.sb.data.appendSlice(allocator, bui_solution.bytes.items);
+                    try self.sb.append(allocator, bui_solution);
                     for (0..self.tm.idtol.items.len) |id|
                         mines_value_list.items[id] += @intFromBool(bui_solution.bit(id));
                     if (UsingWasm) {
@@ -703,8 +753,15 @@ pub const MinesweeperMatrix = struct {
                 var results_str: std.ArrayListUnmanaged(u8) = .empty;
                 defer results_str.deinit(allocator);
                 try results_str.writer(allocator).print("Total valid solutions found for this subsystem: {}<br>", .{total});
+                var begin_range: usize = 0;
                 for (total_mf_map.list.items) |mf| {
-                    try results_str.writer(allocator).print("{} solution(s) have {} total mines.<br>", .{ mf.f, mf.m });
+                    try results_str.writer(allocator).print("{} solution(s) have {} total mines. Solution ranges from {} to {}.<br>", .{
+                        mf.f,
+                        mf.m,
+                        begin_range,
+                        begin_range + mf.f - 1,
+                    });
+                    begin_range += mf.f;
                 }
                 const wasm_main = @import("wasm_main.zig");
                 wasm_main.AppendResults(results_str.items.ptr, results_str.items.len);

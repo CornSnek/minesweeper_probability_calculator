@@ -443,6 +443,7 @@ function show_solution_disable(bool) {
     if (bool) {
         if (last_subsystem_used !== null)
             solution_bits.clear_solution(last_subsystem_used);
+        show_solution_output.textContent = '';
         show_solution_output.style.display = 'hidden';
     } else {
         show_solution_output.textContent = '';
@@ -1298,6 +1299,11 @@ class SolutionBits {
         const sb_len = sb.getUint32(SolutionBitsExtern.len.offset, true);
         const sb_num_bytes = sb.getUint32(SolutionBitsExtern.number_bytes.offset, true);
         const tiles = this.get_tiles(subsystem_i);
+        if(isNaN(sb_len / sb_num_bytes)){
+            show_solution_output.innerHTML = `No solutions`;
+            show_solution_seed.max = 0;
+            return;
+        }
         show_solution_seed.max = sb_len / sb_num_bytes - 1;
         if (solution_i >= sb_len / sb_num_bytes) {
             for (let tile_i = 0; tile_i < tiles.length; tile_i++) {
@@ -1325,7 +1331,7 @@ class SolutionBits {
                 } else div.classList.add('tile-solution-clear');
             }
         }
-        show_solution_output.textContent = `${num_mines} mine(s)`;
+        show_solution_output.innerHTML = `${sb_len / sb_num_bytes} solution(s)<br>${num_mines} mine(s)`;
     }
 }
 let solution_bits = new SolutionBits();

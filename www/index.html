@@ -68,13 +68,21 @@
     <div id="calculate-probability" class="tabs-button">
       Calculate Probability <strong class="badge">Shift</strong>+<strong class="badge">Enter</strong>
     </div>
+    <div id="results-tab-button" class="tabs-button" data-tab="results-tab">
+      Results
+    </div>
+    <div id="clear-probability-button" class="tabs-button">
+      Clear Results
+    </div>
     <div>
       <label for="show-solution-check">Solutions</label>
       <input type="checkbox" id="show-solution-check" disabled>
+      <br>
       <label for="show-solution-seed">Configuration</label>
-      <input id="show-solution-seed" type="number" value="0" step="1" min="0" size="10" disabled>
+      <input id="show-solution-seed" type="number" value="0" step="1" min="0" max="0" size="3" disabled>
+      <br>
       <label for="show-solution-subsystem">Subsystem</label>
-      <input id="show-solution-subsystem" type="number" value="0" min="0" size="3" disabled>
+      <input id="show-solution-subsystem" type="number" value="0" min="0" max="0" size="3" disabled>
       <br>
       <div id="show-solution-output"></div>
     </div>
@@ -105,12 +113,6 @@
       <label for="include-flags">Include Flags</label>
       <input type="checkbox" id="include-flags">
     </div>
-    <div id="results-tab-button" class="tabs-button" data-tab="results-tab">
-      Matrix Results
-    </div>
-    <div id="clear-probability-button" class="tabs-button">
-      Clear Results
-    </div>
     <div id="clear-all-button" class="tabs-button">
       Clear All Tiles <strong class="badge">Shift</strong>+<strong class="badge">Delete</strong>
     </div>
@@ -132,26 +134,25 @@
       </div>
       <br>
       <div>
-        This web app calculates the probabilities of adjacent tiles for mines.<br><br>Fractions or percentages equaling 0 (green) is
-        guaranteed to be a safe number tile, and 1 (red) is guaranteed to be a mine.<br><br>
+        Fractions or percentages equaling 0 or 0% (green) is
+        guaranteed to be a safe number tile, and 1 or 100% (red) is guaranteed to be a mine.<br><br>
         Only tiles that are near number tiles (sides and diagonally) will have their probability calculated.<br><br>The
         web app calculates the probability by first gathering all the tiles
-        that are near number tiles, assign id numbers for each unique tile, and creates a system of equations of each
+        that are near number tiles, assigning id numbers for each unique tile, and createing a system of equations of each
         number tile using the ids.<br><br>
-        Each id is assigned 1 it is near the number tile, or 0 if not near it.<br><br>The web app will attempt to solve
-        the equations in order
+        The web app will attempt to solve the equations in order
         to find all possible solutions.<br><br>For each valid solution, each id number is assigned 0 (no mine) or 1
         (mine).<br><br>
         The probability is calculated depending on the option that you have chosen (Local or Global Probability).<br><br>
-        See the Matrix Results tab to see an example of the matrix calculations in action.<br><br>
+        See the Results tab to see an example of the matrix calculations in action, and the number of solutions.<br><br>
         Note: If you recalculate the same board, the data of the calculation will not be changed, meaning that you can see Local / Global Probability calculations from the same board without waiting for the calculation to complete multiple times.
         <br><br>
         Once the probability is calculated, you can click on adjacent tiles to see the calculations of the total number of solutions, and the frequency of solutions s that have m number of mines. This shows the frequencies per tile and per board/system.
         <br><br>
+        You can also check the possible mine configurations or valid solutions by checking the Solutions checkbox. This will try to show every single mine configuration possible for a particular subsystem or subboard. Configurations are ordered from least to greatest amount of mines. To see the range for each exact number of mines for a Configuration, see the 'Results' tab.
+        <br><br>
         This website can also parse screenshots of minesweeper boards. To try this feature, drag a minesweeper screenshot, input the width of the board and crop only the board available, and press 'Parse Screenshot'.
         <br>Note: If you properly cropped the picture, it may still be inaccurate in its predictions, so you will have to check your screenshot for any incorrect tiles. 
-        <br><br>
-        You can also check the mine configurations or valid solutions by checking the Solutions checkbox. This will try to show every single mine configuration possible for a particular subsystem or subboard.
       </div>
     </div>
     <div id="probability-tab" class="options-gui panel-hide-right">
@@ -623,7 +624,7 @@
             \end{array}
           \]
           It should be noted that 16 + 120 + 144 = 280, the total number of solutions of 1-1-1 and 2-3-2 board systems combined.
-          <br> The numbers can be verified by checking the Matrix Results tab of the Whole System.
+          <br> The numbers can be verified by checking the Results tab of the Whole System.
           <br><br>
           To get the total number of solutions per mine number of a tile, it is similar to the calculation above.
           <br>
@@ -1008,7 +1009,7 @@
       </div>
       <br>
       <div id="matrix-results-text">
-        Results are shown after clicking 'Matrix Results'
+        Results are shown after clicking 'Calculate Probability'
       </div>
     </div>
   </div>

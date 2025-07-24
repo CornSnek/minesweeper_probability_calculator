@@ -108,7 +108,7 @@ a:hover {
 }
 
 .tile.tile-solution-mine {
-    color: #FFFFFF9F;
+    color: #FFFFFFCF;
     text-shadow: 1px 1px #0000009F;
     background-color: var(--ms-probability-mine);
     background-image: url('images/mine.svg');
@@ -116,8 +116,9 @@ a:hover {
 }
 
 .tile.tile-solution-clear {
-    color: #0000007F;
-    background-image: none;
+    color: #FFFFFFCF;
+    background-color: var(--ms-probability-clear);
+    background-image: url('images/x_transp.svg');
 }
 
 .tile.tile-pb-error {
@@ -152,7 +153,7 @@ a:hover {
     bottom: 0;
     right: 0;
     box-shadow: -2px 0 5px black;
-    width: 150px;
+    width: 200px;
     transition: transform 0.3s ease;
     z-index: 2;
     row-gap: 10px;
