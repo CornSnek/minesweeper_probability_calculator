@@ -454,13 +454,13 @@ function show_solution_f(e) {
     if (web_state == STATE_IDLE) {
         deselect_tiles_f();
         if (!show_solution_seed.validity.valid || !show_solution_subsystem.validity.valid) return;
-        const solution_id = parseInt(show_solution_seed.value);
         const subsystem_id = parseInt(show_solution_subsystem.value);
         if (e.target === show_solution_subsystem) {
             if (last_subsystem_used !== subsystem_id && last_subsystem_used !== null)
                 solution_bits.clear_solution(last_subsystem_used);
             show_solution_seed.value = 0;
         }
+        const solution_id = parseInt(show_solution_seed.value);
         last_subsystem_used = subsystem_id;
         solution_bits.show_solution(subsystem_id, solution_id);
     }
