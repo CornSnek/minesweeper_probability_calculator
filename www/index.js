@@ -1331,7 +1331,7 @@ class SolutionBits {
                 } else div.classList.add('tile-solution-clear');
             }
         }
-        show_solution_output.innerHTML = `${sb_len / sb_num_bytes} solution(s)<br>${num_mines} mine(s)`;
+        show_solution_output.innerHTML = `${sb_len / sb_num_bytes} solution(s)<br>${num_mines} mine configuration`;
     }
 }
 let solution_bits = new SolutionBits();
