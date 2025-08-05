@@ -13,6 +13,12 @@ pub const MsType = enum {
     flag,
     ///Numbered tile, but is not scanned for mine information or adjacent unknown tiles near it.
     donotcare,
+    ///In play mode.
+    flagwrong,
+    ///In play mode.
+    minenoclick,
+    ///In play mode.
+    chording,
     @"0",
     @"1",
     @"2",
@@ -41,9 +47,11 @@ pub const MsType = enum {
             .donotcare => "x",
             inline else => |e| {
                 const num_mines = e.number_of_mines();
-                std.debug.assert(num_mines != null);
-                const array_ch = "012345678";
-                return array_ch[num_mines.? .. num_mines.? + 1];
+                if (num_mines) |nm| {
+                    const array_ch = "012345678";
+                    return array_ch[nm .. nm + 1];
+                }
+                return "";
             },
         };
     }
@@ -55,7 +63,7 @@ pub const MsType = enum {
     }
     pub fn is_clicked(self: MsType) bool {
         return switch (self) {
-            .mine, .donotcare, .@"0", .@"1", .@"2", .@"3", .@"4", .@"5", .@"6", .@"7", .@"8" => true,
+            .mine, .donotcare, .flagwrong, .chording, .@"0", .@"1", .@"2", .@"3", .@"4", .@"5", .@"6", .@"7", .@"8" => true,
             else => false,
         };
     }
@@ -68,6 +76,7 @@ pub const MsType = enum {
     pub fn in_palette(self: MsType) bool {
         return switch (self) {
             .unknown, .mine, .flag, .donotcare, .@"0", .@"1", .@"2", .@"3", .@"4", .@"5", .@"6", .@"7", .@"8" => true,
+            else => false,
         };
     }
     pub fn description(self: MsType) []const u8 {
@@ -85,6 +94,7 @@ pub const MsType = enum {
             .@"6" => "6 Tile - Tile that has exactly 6 mines around its sides.",
             .@"7" => "7 Tile - Tile that has exactly 7 mines around its sides.",
             .@"8" => "8 Tile - Tile that has exactly 8 mines around its sides.",
+            else => "",
         };
     }
     pub fn image_url(self: MsType) []const u8 {
@@ -93,6 +103,9 @@ pub const MsType = enum {
             .mine => "mine.svg",
             .flag => "flag.svg",
             .donotcare => "x.svg",
+            .flagwrong => "flag_wrong.svg",
+            .minenoclick => "mine.svg",
+            .chording => "unknown.svg",
             .@"0" => "0.svg",
             .@"1" => "1.svg",
             .@"2" => "2.svg",
@@ -120,6 +133,13 @@ pub const MapParser = struct {
         var mm: MapParser = .{ .width = width, .height = height };
         mm.map.appendNTimes(allocator, MsType.unknown, width * height) catch return .alloc_error;
         return .{ .ok = mm };
+    }
+    pub fn clone(self: MapParser, allocator: std.mem.Allocator) !MapParser {
+        return .{
+            .map = try self.map.clone(allocator),
+            .width = self.width,
+            .height = self.height,
+        };
     }
     pub fn init_parse(str: []const u8, allocator: std.mem.Allocator) InitStatus {
         var mm: MapParser = .{ .width = undefined, .height = 0 };

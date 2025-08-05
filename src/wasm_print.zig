@@ -4,7 +4,7 @@ const shared = @import("shared.zig");
 pub const PrintType = shared.PrintType;
 //Print panic non-asynchronously
 pub extern fn JSPrint([*c]const u8, usize, bool) void;
-pub fn panic(mesg: []const u8, _: ?*std.builtin.StackTrace, _: ?usize) noreturn {
+pub fn panic(mesg: []const u8, _: ?usize) noreturn {
     var ebi: usize = 0;
     var error_buffer: [512]u8 = undefined;
     error_buffer[0] = 1;

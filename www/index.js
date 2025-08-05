@@ -2,13 +2,18 @@ import {
     PrintType, MsType, CalculateArray,
     CalculateStatus, Calculate, ProbabilityList,
     LocationCount, IDToLocationExtern, TileLocation,
-    MineFrequency, SolutionBitsExtern
+    MineFrequency, SolutionBitsExtern, StringSlice
 } from './wasm_to_js.js'
 let WasmObj = null;
 let WasmExports = null;
 let calculate_worker = null;
 const WasmMemory = new WebAssembly.Memory({ initial: 20, maximum: 65536, shared: true });
+let TE = new TextEncoder();
+let TD = new TextDecoder();
 let grid_body = null;
+let config;
+let config_window_close;
+let show_config_window;
 let tiles_palette;
 let tile_description;
 let tile_gui;
@@ -44,6 +49,7 @@ let ctrl_key_down = false;
 const STATE_IDLE = 0;
 const STATE_CALCULATING = 1;
 const STATE_UPLOAD = 2;
+const STATE_PLAY = 3;
 let web_state = STATE_IDLE;
 let tile_colors = {};
 class UndoNode {
@@ -132,6 +138,9 @@ async function init() {
         }
     }
     grid_body = document.getElementById('grid-body');
+    config = document.getElementById('config');
+    config_window_close = document.getElementById('config-window-close');
+    show_config_window = document.getElementById('show-config-window');
     tiles_palette = document.getElementById('tiles-palette');
     tile_description = document.getElementById('tile-description');
     tile_gui = document.getElementById('tile-gui');
@@ -141,6 +150,20 @@ async function init() {
     rows_num = document.getElementById('rows-num');
     generate_grid = document.getElementById('generate-grid');
     parse_screenshot_popup = document.getElementById('parse-screenshot-popup');
+    play_current_board = document.getElementById('play-current-board');
+    play_upload_current_board = document.getElementById('play-upload-current-board');
+    play_body = document.getElementById('play-body');
+    close_play_body = document.getElementById('close-play-body');
+    play_board = document.getElementById('play-board');
+    play_board_data = document.getElementById('play-board-data');
+    play_board_container = document.getElementById('play-board-container');
+    play_mines_left = document.getElementById('play-mines-left');
+    play_timer = document.getElementById('play-timer');
+    play_seed = document.getElementById('play-seed');
+    play_status = document.getElementById('play-status');
+    play_new_game = document.getElementById('play-new-game');
+    play_seed_manual = document.getElementById('play-seed-manual');
+    play_sandbox = document.getElementById('play-sandbox');
     calculate_probability = document.getElementById('calculate-probability');
     clear_probability_button = document.getElementById('clear-probability-button');
     clear_all_button = document.getElementById('clear-all-button');
@@ -246,6 +269,15 @@ async function init() {
                         case 'Delete':
                             clear_all_tiles(e);
                             return; //Don't run the same keybind 'Delete' code
+                        case 'O':
+                            if (config.classList.contains('window-hide'))
+                                show_config_window_f(e);
+                            else
+                                hide_config_window_f(e);
+                            break;
+                        case 'P':
+                            show_play_current_board_f(e);
+                            break;
                     }
                 }
                 if (ctrl_key_down) {
@@ -285,12 +317,43 @@ async function init() {
             }
         }
     });
+    let header_to_drag = null;
+    document.addEventListener('mousemove', e => {
+        if (header_to_drag === null) return;
+        drag_window_f(header_to_drag.parentElement, e.clientX, e.clientY);
+    });
+    document.addEventListener('mouseup', e => header_to_drag = null);
+    document.querySelectorAll('.window-header').forEach(header => {
+        const config_window = header.parentElement;
+        header.onmousedown = e => {
+            if (e.target.classList.contains('window-close')) return;
+            header_to_drag = header;
+            const bcr = config_window.getBoundingClientRect();
+            config_window.dataset.dragx = e.clientX - bcr.left;
+            config_window.dataset.dragy = e.clientY - bcr.top;
+        };
+    });
+    show_config_window.onclick = e => {
+        if (config.classList.contains('window-hide')) {
+            show_config_window_f(e);
+        }
+        else {
+            hide_config_window_f(e);
+        }
+    };
+    config_window_close.onclick = hide_config_window_f;
     window.addEventListener('resize', e => {
         const tab = document.querySelector('.options-gui.panel-show');
         if (tab !== null) {
             document.querySelector(':root').style.setProperty('--all-tabs-shift', `-${tab.offsetWidth}px`);
             document.body.style.marginRight = `${all_right_tabs.offsetWidth + tab.offsetWidth}px`;
         }
+        //For every window, make sure it stays within the borders of the browser window using the drag function.
+        document.querySelectorAll('.window').forEach(window => {
+            window.dataset.dragx = 0;
+            window.dataset.dragy = 0;
+            drag_window_f(window, parseInt(window.dataset.left), parseInt(window.dataset.top));
+        });
     });
     document.addEventListener('keyup', e => {
         if (e.key == 'Shift') {
@@ -332,6 +395,33 @@ async function init() {
             show_upload_body();
         }
     }
+    play_upload_current_board.onclick = e => {
+        const success = WasmExports.UploadCurrentBoard();
+        if (success == 0) {
+            flash_message(FLASH_ERROR, 'Calculate Probability must first be used to upload the board properly.', 5000);
+            return;
+        }
+    };
+    play_current_board.onclick = show_play_current_board_f;
+    close_play_body.onclick = e => {
+        play_body.style.display = 'none';
+        web_state = STATE_IDLE;
+    }
+    play_board_container.oncontextmenu = e => e.preventDefault(); //Prevent right-click menu.
+    play_new_game.onclick = e => {
+        if (web_state === STATE_PLAY) {
+            if (!play_seed_manual.checked) {
+                play_board_data.value = '';
+                play_obj.init_create_board_empty(BigInt(Date.now()));
+            } else {
+                play_obj.init_create_board_preset_seed('30x16, m=4440304080802002029118008000c081210180d8002082000410428e4240310410403820250901408c079d000460000e0828088252c20c8245029000. l=0b0000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000. r=040000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000.');
+            }
+
+        }
+    };
+    play_sandbox.onchange = e => flash_message(FLASH_SUCCESS, 'Sandbox mode enables continuing playing the game after hitting a mine. It also shows wrong flags after clicking a mine if any.', 5000);
+    play_seed_manual.onchange = play_seed_manual_f;
+    play_seed_manual_f();
     clear_probability_button.onclick = clear_all_probability;
     clear_all_button.onclick = clear_all_tiles;
     show_solution_seed.onchange = show_solution_f;
@@ -373,7 +463,7 @@ async function init() {
         include_flags.disabled = prob_type !== 'Global';
         flash_message(FLASH_SUCCESS, (prob_type !== 'Global') ? 'Local shows only the probability for adjacent tiles' : 'Global shows the probability of the whole board, where Mine Count is considered', 5000);
     };
-    include_flags.onchange = e => flash_message(FLASH_SUCCESS, e.target.checked ? 'Flags and mines are counted in Global Count to consider the total number of mines left + flags + mines in a board.' : 'Flags and mines are not counted in Global Count to consider only the number of mines left.', 5000);
+    include_flags.onchange = e => flash_message(FLASH_SUCCESS, e.target.checked ? 'Flags and mines are counted in Mine Count to consider the total number of mines left + flags + mines in a board.' : 'Flags and mines are not counted in Mine Count to consider only the number of mines left.', 5000);
     parse_screenshot.onclick = pre_parse_screenshot_board;
     crop_left.onchange = delay_show_crop;
     crop_left.onclick = delay_show_crop;
@@ -393,6 +483,40 @@ async function init() {
     include_flags.disabled = select_probability.value !== 'Global';
     console.log('Waiting for KaTeX module...');
     wait_katex();
+}
+function show_play_current_board_f(e) {
+    if (web_state == STATE_IDLE) {
+        if (select_probability.value !== 'Global') {
+            flash_message(FLASH_ERROR, 'Play Current Board requires Global Probability and Mine Count enabled in Configurations', 5000);
+            return;
+        }
+        deselect_tiles_f();
+        hide_any_right_panels(e);
+        play_body.style.display = 'initial';
+        web_state = STATE_PLAY;
+    }
+}
+function show_config_window_f(e) {
+    if (web_state != STATE_IDLE) return;
+    config.classList.remove('window-hide');
+    show_config_window.classList.add('tab-selected');
+    drag_window_f(config, parseInt(config.dataset.left), parseInt(config.dataset.top));
+}
+function hide_config_window_f(e) {
+    show_config_window.classList.remove('tab-selected');
+    config.classList.add('window-hide');
+}
+function drag_window_f(config_window, client_x, client_y) {
+    let x = client_x - parseInt(config_window.dataset.dragx);
+    let y = client_y - parseInt(config_window.dataset.dragy);
+    const max_x = window.innerWidth - config_window.offsetWidth;
+    const max_y = window.innerHeight - config_window.offsetHeight;
+    x = Math.max(0, Math.min(x, max_x));
+    y = Math.max(0, Math.min(y, max_y));
+    config_window.style.left = x + 'px';
+    config_window.style.top = y + 'px';
+    config_window.dataset.left = x;
+    config_window.dataset.top = y;
 }
 const FLASH_ERROR = 0;
 const FLASH_SUCCESS = 1;
@@ -533,6 +657,7 @@ function init_grid(num_columns, num_rows) {
         div.onmouseleave = () => div.classList.remove('tile-hovered');
     }
     for (const div of grid_body.children) update_tile_div(div, true);
+    play_obj.null_game();
 }
 class TilePoint {
     constructor(x, y) {
@@ -764,7 +889,9 @@ class SelectedTile {
 }
 const selected_tile = new SelectedTile();
 const ch_to_tile_enum = new Map();
-MsType.$js_ch.forEach((ch, i) => ch_to_tile_enum.set(ch, i));
+MsType.$js_ch.forEach((ch, i) => {
+    if (MsType.$in_palette[i]) ch_to_tile_enum.set(ch, i)
+});
 //Call tile_select_f depending on shift key and already selecting one tile
 //to select more than one tile.
 function tile_select_f(e) {
@@ -931,7 +1058,7 @@ function update_tile_div(div, use_is_clicked) {
     if (use_is_clicked) {
         if (MsType.$is_clicked[ms_type]) {
             div.classList.add('tile-clicked');
-            if (ms_type == MsType.mine)
+            if (ms_type == MsType.mine || ms_type == MsType.flagwrong)
                 div.classList.add('tile-mine');
         } else {
             div.classList.remove('tile-clicked');
@@ -944,6 +1071,7 @@ function update_tile_div(div, use_is_clicked) {
     const img = document.createElement('img');
     div.appendChild(img);
     img.src = 'images/' + image_url;
+    img.draggable = false;
     img.classList.add('img-tile');
 }
 function set_tile(x, y, ms_type) {
@@ -1299,7 +1427,7 @@ class SolutionBits {
         const sb_len = sb.getUint32(SolutionBitsExtern.len.offset, true);
         const sb_num_bytes = sb.getUint32(SolutionBitsExtern.number_bytes.offset, true);
         const tiles = this.get_tiles(subsystem_i);
-        if(isNaN(sb_len / sb_num_bytes)){
+        if (isNaN(sb_len / sb_num_bytes)) {
             show_solution_output.innerHTML = `No solutions`;
             show_solution_seed.max = 0;
             return;
@@ -1325,13 +1453,13 @@ class SolutionBits {
                 const bit_mask = 1 << bit_i;
                 div.classList.remove('tile-solution-mine');
                 div.classList.remove('tile-solution-clear');
-                if((bit_mask & solution_arr[byte_i]) != 0) {
+                if ((bit_mask & solution_arr[byte_i]) != 0) {
                     div.classList.add('tile-solution-mine')
                     num_mines += 1;
                 } else div.classList.add('tile-solution-clear');
             }
         }
-        show_solution_output.innerHTML = `${sb_len / sb_num_bytes} solution(s)<br>${num_mines} mine configuration`;
+        show_solution_output.innerHTML = `${sb_len / sb_num_bytes} solution(s), ${num_mines} mine configuration`;
     }
 }
 let solution_bits = new SolutionBits();
@@ -1577,12 +1705,14 @@ let upload_output;
 let session = null;
 document.addEventListener('dragover', e => {
     e.preventDefault();
+    if (web_state !== STATE_UPLOAD) return;
     parse_screenshot.disabled = true;
     upload_body.style.display = 'block';
     disable_upload_sliders(true);
 });
 document.addEventListener('drop', async e => {
     e.preventDefault();
+    if (web_state !== STATE_UPLOAD) return;
     const files = e.dataTransfer.files;
     if (files.length > 0) {
         if (files[0] && files[0].type.startsWith("image/")) {
@@ -1734,4 +1864,501 @@ async function parse_screenshot_board(img_rows, img_columns, tile_pixel_size, cl
     selected_tile.paste_text_clipboard(tile_string);
     deselect_tiles_f(undefined);
     flash_message(FLASH_SUCCESS, 'Completed parsing tiles from screenshot. Please check your screenshot for any incorrect tiles. You can try to reopen Parse Minesweeper Screenshot again to readjust crop values and board width.', 10000);
+}
+function play_seed_manual_f() {
+    play_seed.disabled = !play_seed_manual.checked;
+};
+let play_current_board;
+let play_body;
+let close_play_body;
+let play_upload_current_board;
+let play_board;
+let play_board_data;
+let play_board_container;
+let play_mines_left;
+let play_timer;
+let play_seed;
+let play_status;
+let play_new_game;
+let play_seed_manual;
+let play_sandbox;
+class Play {
+    static STATE_NULL = 0;
+    static STATE_BEGIN_PLAY = 1;
+    static STATE_BEGIN_CUSTOM = 2;
+    static STATE_PLAYING = 3;
+    static STATE_YOU_LOSE = 4;
+    static STATE_YOU_WIN = 5;
+    static DIR_U = 0;
+    static DIR_UR = 1;
+    static DIR_R = 2;
+    static DIR_DR = 3;
+    static DIR_D = 4;
+    static DIR_DL = 5;
+    static DIR_L = 6;
+    static DIR_UL = 7;
+    constructor() {
+        this.state = Play.STATE_NULL;
+        this.num_mines = 0;
+        this.width = 0;
+        this.height = 0;
+        this.num_mines_left = 0;
+        this.time_since = 0;
+        this.time_interval = null;
+        this.last_button = null;
+        this.highlight_array = [];
+    }
+    static to_xy(i, width) {
+        return [i % width, Math.floor(i / width)];
+    }
+    static to_i(x, y, width) {
+        return y * width + x;
+    }
+    static get_adj(x, y, width, height, dir) {
+        switch (dir) {
+            case Play.DIR_U:
+                if (y != 0) return Play.to_i(x, y - 1, width);
+                break;
+            case Play.DIR_UR:
+                if (y != 0 && x != width - 1) return Play.to_i(x + 1, y - 1, width);
+                break;
+            case Play.DIR_R:
+                if (x != width - 1) return Play.to_i(x + 1, y, width);
+                break;
+            case Play.DIR_DR:
+                if (y != height - 1 && x != width - 1) return Play.to_i(x + 1, y + 1, width);
+                break;
+            case Play.DIR_D:
+                if (y != height - 1) return Play.to_i(x, y + 1, width);
+                break;
+            case Play.DIR_DL:
+                if (y != height - 1 && x != 0) return Play.to_i(x - 1, y + 1, width);
+                break;
+            case Play.DIR_L:
+                if (x != 0) return Play.to_i(x - 1, y, width);
+                break;
+            case Play.DIR_UL:
+                if (y != 0 && x != 0) return Play.to_i(x - 1, y - 1, width);
+                break;
+        }
+        return null;
+    }
+    static ms_num_format(time) {
+        return String(time).padStart(3, '0');
+    }
+    static is_playable_state(state) {
+        switch (state) {
+            case Play.STATE_BEGIN_PLAY:
+            case Play.STATE_BEGIN_CUSTOM:
+            case Play.STATE_PLAYING:
+                return true;
+            default:
+                return false;
+        }
+    }
+    null_game() {
+        this.num_mines = 0;
+        this.width = 0;
+        this.height = 0;
+        play_board.textContent = ``;
+        play_status.value = ``;
+        play_sandbox.disabled = false;
+        clearInterval(this.time_interval);
+        this.time_interval = null;
+        play_mines_left.value = '000';
+        play_timer.value = '000';
+        this.state = Play.STATE_NULL;
+    }
+    won_game() {
+        play_status.value = `YOU WIN ON ${play_sandbox.checked ? 'SANDBOX' : 'STANDARD'} MODE! B)`;
+        play_sandbox.disabled = false;
+        clearInterval(this.time_interval);
+        this.time_interval = null;
+        [...play_board.children].filter(div => parseInt(div.dataset.ms_type) === MsType.unknown).forEach(div => {
+            div.dataset.ms_type = MsType.flag;
+            update_tile_div(div, false);
+        });
+        play_mines_left.value = '000';
+        this.state = Play.STATE_YOU_WIN;
+    }
+    lost_game(clicked_mine_i) {
+        play_sandbox.disabled = false;
+        play_status.value = 'YOU LOSE! x(';
+        clearInterval(this.time_interval);
+        this.time_interval = null;
+        [...play_board.children].forEach(div => {
+            if (div.dataset.has_mine === 'y') {
+                if (parseInt(div.dataset.ms_type) !== MsType.flag) {
+                    if (parseInt(div.dataset.i) !== clicked_mine_i) {
+                        div.dataset.ms_type = MsType.minenoclick;
+                    } else {
+                        div.dataset.ms_type = MsType.mine;
+                    }
+                    update_tile_div(div, true);
+                }
+            } else if (parseInt(div.dataset.ms_type) === MsType.flag) {
+                div.dataset.ms_type = MsType.flagwrong;
+                update_tile_div(div, true);
+            }
+        });
+        this.state = Play.STATE_YOU_LOSE;
+    }
+    //Returns bool (true if mine is not clicked or sandbox mode) to determine lose state. click_number is a boolean that determines if you are chording (clicking a number).
+    click_tile(this_i, click_number) {
+        const [x, y] = Play.to_xy(this_i, this.width);
+        const this_div = play_board.children[this_i];
+        const ms_type = parseInt(this_div.dataset.ms_type);
+        switch (ms_type) {
+            case MsType.unknown:
+                if (this_div.dataset.has_mine === 'y') {
+                    if (!play_sandbox.checked)
+                        this.lost_game(this_i);
+                    else {
+                        const div = play_board.children[this_i];
+                        if (parseInt(div.dataset.ms_type) !== MsType.mine) {
+                            div.dataset.ms_type = MsType.mine;
+                            update_tile_div(div, true);
+                            this.num_mines_left -= 1;
+                            play_mines_left.value = Play.ms_num_format(this.num_mines_left);
+                            [...play_board.children].filter(div => {
+                                return parseInt(div.dataset.ms_type) === MsType.flag && div.dataset.has_mine === undefined;
+                            }).forEach(div => {
+                                div.dataset.ms_type = MsType.flagwrong;
+                                update_tile_div(div, true);
+                            });
+                        }
+                    }
+                    return play_sandbox.checked; //Just win on sandbox mode, but not standard.
+                }
+                let num_adj_mines = 0;
+                for (let i = 0; i < 8; i++) {
+                    const adj_i = Play.get_adj(x, y, this.width, this.height, i);
+                    if (adj_i !== null) if (play_board.children[adj_i].dataset.has_mine === 'y') num_adj_mines++;
+                }
+                this_div.dataset.ms_type = MsType[num_adj_mines];
+                update_tile_div(this_div, true);
+                if (num_adj_mines == 0) {
+                    for (let i = 0; i < 8; i++) {
+                        const adj_i = Play.get_adj(x, y, this.width, this.height, i);
+                        if (adj_i !== null) {
+                            if (parseInt(play_board.children[adj_i].dataset.ms_type) === MsType.unknown)
+                                this.click_tile(adj_i, false);
+                        }
+                    }
+                }
+                this.state = Play.STATE_PLAYING;
+                break;
+            case MsType['0']:
+            case MsType['1']:
+            case MsType['2']:
+            case MsType['3']:
+            case MsType['4']:
+            case MsType['5']:
+            case MsType['6']:
+            case MsType['7']:
+            case MsType['8']:
+                if (click_number) {
+                    let number_of_flag_mines = 0;
+                    const flag_mines_todo_chording = MsType.$number_of_mines[ms_type];
+                    for (let i = 0; i < 8; i++) {
+                        const adj_i = Play.get_adj(x, y, this.width, this.height, i);
+                        if (adj_i !== null) {
+                            const ms_type = parseInt(play_board.children[adj_i].dataset.ms_type);
+                            if (ms_type === MsType.flag || ms_type === MsType.mine)
+                                number_of_flag_mines++;
+                        }
+                    }
+                    if (flag_mines_todo_chording === number_of_flag_mines) {
+                        for (let i = 0; i < 8; i++) {
+                            const adj_i = Play.get_adj(x, y, this.width, this.height, i);
+                            if (adj_i !== null)
+                                this.click_tile(adj_i, false);
+                        }
+                    }
+                }
+                this.state = Play.STATE_PLAYING;
+                break;
+            default:
+                break;
+        }
+        return true;
+    }
+    start_play(this_i) {
+        WasmExports.MinesweeperInitEmpty(this.num_mines, this.width, this.height, this_i);
+        const seed_ptr = WasmExports.GetMineSeed();
+        const mbdv = new DataView(WasmMemory.buffer, seed_ptr, StringSlice.$size);
+        const mine_ptr = mbdv.getUint32(StringSlice.ptr.offset, true);
+        const mine_len = mbdv.getUint32(StringSlice.len.offset, true);
+        play_board_data.value = copy_shared(mine_ptr, mine_len);
+        this.start_custom();
+    }
+    static bit_set(dv, byte_i, bit_i) {
+        return (dv.getUint8(byte_i) & (1 << bit_i)) != 0;
+    }
+    //Returns bool (false if a bit in lc_board_ptr has clicked a mine)
+    start_custom() {
+        play_sandbox.disabled = true;
+        const mine_board_ptr = WasmExports.GetMineBoard();
+        const mbdv = new DataView(WasmMemory.buffer, mine_board_ptr, StringSlice.$size);
+        const mine_ptr = mbdv.getUint32(StringSlice.ptr.offset, true);
+        const byte_len = mbdv.getUint32(StringSlice.len.offset, true);
+        const mine_arr = new DataView(WasmMemory.buffer, mine_ptr, byte_len);
+        for (let i = 0; i < this.width * this.height; i++) {
+            const byte_i = Math.floor(i / 8);
+            const bit_i = i % 8;
+            if (Play.bit_set(mine_arr, byte_i, bit_i))
+                play_board.children[i].dataset.has_mine = 'y';
+        }
+        const lc_board_ptr = WasmExports.GetLeftClickBoard();
+        const rc_board_ptr = WasmExports.GetRightClickBoard();
+        const lcbdv = new DataView(WasmMemory.buffer, lc_board_ptr, StringSlice.$size);
+        const rcbdv = new DataView(WasmMemory.buffer, rc_board_ptr, StringSlice.$size);
+        const lcb_len = lcbdv.getUint32(StringSlice.len.offset, true);
+        const rcb_len = rcbdv.getUint32(StringSlice.len.offset, true);
+        if (lcb_len != 0) {
+            const lcb_ptr = lcbdv.getUint32(StringSlice.ptr.offset, true);
+            const dv = new DataView(WasmMemory.buffer, lcb_ptr, lcb_len);
+            for (let i = 0; i < this.width * this.height; i++) {
+                const byte_i = Math.floor(i / 8);
+                const bit_i = i % 8;
+                if (Play.bit_set(dv, byte_i, bit_i))
+                    if (!this.click_tile(i, false))
+                        return false;
+            }
+        }
+        if (rcb_len != 0) {
+            const rcb_ptr = rcbdv.getUint32(StringSlice.ptr.offset, true);
+            const dv = new DataView(WasmMemory.buffer, rcb_ptr, rcb_len);
+            for (let i = 0; i < this.width * this.height; i++) {
+                const byte_i = Math.floor(i / 8);
+                const bit_i = i % 8;
+                if (Play.bit_set(dv, byte_i, bit_i))
+                    this.toggle_flag(i);
+            }
+        }
+        this.time_since = Date.now();
+        this.time_interval = setInterval(() => {
+            play_timer.value = Play.ms_num_format(Math.min(Math.floor((Date.now() - this.time_since) / 1000), 999));
+        }, 250);
+        return true;
+    }
+    left_click(e, this_i) {
+        this.remove_highlights();
+        switch (this.state) {
+            case Play.STATE_BEGIN_CUSTOM:
+                {
+                    if (!this.start_custom()) {
+                        const lc_board_ptr = WasmExports.GetLeftClickBoard();
+                        const lcbdv = new DataView(WasmMemory.buffer, lc_board_ptr, StringSlice.$size);
+                        const lcb_len = lcbdv.getUint32(StringSlice.len.offset, true);
+                        if (lcb_len != 0) //Don't activate first click tile if l parameter was set
+                            if (this.click_tile(this_i, true))
+                                if (this.found_all_mine_tiles())
+                                    this.won_game();
+                    }
+                }
+                break;
+            case Play.STATE_BEGIN_PLAY:
+                {
+                    this.start_play(this_i);
+                    if (this.click_tile(this_i, true))
+                        if (this.found_all_mine_tiles())
+                            this.won_game();
+                }
+                break;
+            case Play.STATE_PLAYING:
+                if (this.click_tile(this_i, true))
+                    if (this.found_all_mine_tiles())
+                        this.won_game();
+                break;
+            default:
+                break;
+        }
+    }
+    toggle_flag(this_i) {
+        const this_div = play_board.children[this_i];
+        const ms_type = parseInt(this_div.dataset.ms_type);
+        if (ms_type === MsType.unknown) {
+            this_div.dataset.ms_type = MsType.flag;
+            update_tile_div(this_div, true);
+            this.num_mines_left -= 1;
+        } else if (ms_type === MsType.flag || ms_type === MsType.flagwrong) {
+            this_div.dataset.ms_type = MsType.unknown;
+            update_tile_div(this_div, true);
+            this.num_mines_left += 1;
+        }
+        play_mines_left.value = Play.ms_num_format(this.num_mines_left);
+    }
+    found_all_mine_tiles() {
+        let num_not_mine_tiles = 0;
+        [...play_board.children].filter(div => div.dataset.has_mine === undefined).forEach(div => {
+            const ms_type = parseInt(div.dataset.ms_type);
+            num_not_mine_tiles += MsType.$is_number[ms_type] ? 1 : 0;
+        });
+        return this.width * this.height - this.num_mines === num_not_mine_tiles;
+    }
+    right_click(e, this_i) {
+        if (e !== undefined) e.preventDefault();
+        switch (this.state) {
+            case Play.STATE_BEGIN_CUSTOM:
+                this.start_custom();
+                this.toggle_flag(this_i);
+                if (this.found_all_mine_tiles())
+                    this.won_game();
+                else
+                    this.state = Play.STATE_PLAYING;
+                break;
+            case Play.STATE_BEGIN_PLAY:
+                this.start_play(this_i);
+                this.toggle_flag(this_i);
+                if (this.found_all_mine_tiles())
+                    this.won_game();
+                else
+                    this.state = Play.STATE_PLAYING;
+                break;
+            case Play.STATE_PLAYING:
+                this.toggle_flag(this_i);
+                break;
+            default:
+                break;
+        }
+    }
+    remove_highlights() {
+        this.highlight_array.forEach(i => {
+            const div = play_board.children[i];
+            div.dataset.ms_type = MsType.unknown;
+            update_tile_div(div, true);
+        });
+        this.highlight_array.length = 0;
+    }
+    chording_highlight(e, this_i) {
+        const [x, y] = Play.to_xy(this_i, this.width);
+        const this_div = play_board.children[this_i];
+        const ms_type = parseInt(this_div.dataset.ms_type);
+        this.remove_highlights();
+        if (MsType.$is_number[ms_type]) {
+            for (let i = 0; i < 8; i++) {
+                const adj_i = Play.get_adj(x, y, this.width, this.height, i);
+                if (adj_i !== null) {
+                    const div = play_board.children[adj_i];
+                    if (parseInt(div.dataset.ms_type) === MsType.unknown) {
+                        this.highlight_array.push(adj_i);
+                        const div = play_board.children[adj_i];
+                        div.dataset.ms_type = MsType.chording;
+                        update_tile_div(div, true);
+                    }
+                }
+            }
+        }
+    }
+    init_create_board(new_width, new_height, new_num_mines) {
+        this.num_mines = new_num_mines;
+        if (this.width == new_width && this.height == new_height) {
+            //Already intialized once
+            return;
+        }
+        this.width = new_width;
+        this.height = new_height;
+        play_board.textContent = '';
+        for (let i = 0; i < this.width * this.height; i++) {
+            const div = document.createElement('div');
+            play_board.appendChild(div);
+            div.classList.add('tile');
+            div.dataset.i = i;
+            div.dataset.ms_type = MsType.unknown;
+            div.onmousedown = e => {
+                if (!Play.is_playable_state(this.state)) return;
+                this.last_button = e.buttons;
+                this.chording_highlight(e, i);
+            }
+            div.ondragstart = () => false;
+            div.onmouseup = e => {
+                if (this.last_button === 1) {
+                    this.last_button = null;
+                    this.left_click(e, i);
+                }
+                else if (this.last_button === 2) {
+                    this.last_button = null;
+                    this.right_click(e, i);
+                }
+                this.remove_highlights();
+            }
+            div.oncontextmenu = () => false;
+            div.onmouseenter = e => {
+                if (!Play.is_playable_state(this.state)) return;
+                if (e.buttons !== 0) {
+                    this.chording_highlight(e, i);
+                }
+                div.classList.add('tile-hovered');
+            }
+            div.onmouseleave = e => {
+                div.classList.remove('tile-hovered');
+            }
+        }
+    }
+    reset_board(use_state) {
+        play_sandbox.disabled = false;
+        if (this.time_interval !== null) {
+            clearInterval(this.time_interval);
+            this.time_interval = null;
+        }
+        for (let i = 0; i < this.width * this.height; i++) {
+            const div = play_board.children[i];
+            div.dataset.ms_type = MsType.unknown;
+            delete div.dataset.has_mine;
+            div.classList.remove('tile-clicked');
+            div.classList.remove('tile-mine');
+            update_tile_div(div, false);
+        }
+        this.num_mines_left = this.num_mines;
+        play_mines_left.value = Play.ms_num_format(this.num_mines);
+        play_timer.value = '000';
+        this.state = use_state;
+        play_status.value = '';
+    }
+    init_create_board_preset_seed(seed_str) {
+        const seed_te = TE.encode(seed_str);
+        const len = seed_te.byteLength;
+        const alloc_ptr = WasmExports.WasmAlloc(len);
+        const mem_view = new Uint8Array(WasmMemory.buffer, alloc_ptr, len);
+        mem_view.set(seed_te, 0);
+        const err_slice_ptr = WasmExports.ParseMineSeed(alloc_ptr, len);
+        WasmExports.WasmFree(alloc_ptr);
+        if (err_slice_ptr !== 0) {
+            const err_msg_dv = new DataView(WasmMemory.buffer, err_slice_ptr, StringSlice.$size);
+            const err_msg_ptr = err_msg_dv.getUint32(StringSlice.ptr.offset, true);
+            const err_msg_len = err_msg_dv.getUint32(StringSlice.len.offset, true);
+            flash_message(FLASH_ERROR, copy_shared(err_msg_ptr, err_msg_len));
+            WasmExports.WasmFree(err_msg_ptr);
+            return;
+        }
+        play_board.style.setProperty('--num-columns', WasmExports.ParsedWidth());
+        this.init_create_board(WasmExports.ParsedWidth(), WasmExports.ParsedHeight(), WasmExports.ParsedNumMines());
+        this.reset_board(Play.STATE_BEGIN_CUSTOM);
+        const lc_board_ptr = WasmExports.GetLeftClickBoard();
+        const rc_board_ptr = WasmExports.GetRightClickBoard();
+        const lcbdv = new DataView(WasmMemory.buffer, lc_board_ptr, StringSlice.$size);
+        const rcbdv = new DataView(WasmMemory.buffer, rc_board_ptr, StringSlice.$size);
+        const lcb_len = lcbdv.getUint32(StringSlice.len.offset, true);
+        const rcb_len = rcbdv.getUint32(StringSlice.len.offset, true);
+        if (lcb_len != 0 || rcb_len != 0)
+            flash_message(FLASH_SUCCESS, 'l or m parameter has been set. Your first click will be ignored.', 5000);
+    }
+    init_create_board_empty(seed) {
+        play_board.style.setProperty('--num-columns', columns);
+        this.init_create_board(columns, rows, parseInt(gm_count.value));
+        this.reset_board(Play.STATE_BEGIN_PLAY);
+        this.seed = seed;
+        play_seed.value = seed;
+        WasmExports.InitRNGSeed(seed);
+    }
+};
+const play_obj = new Play();
+//Because memory is shared, WasmMemory.buffer (As a SharedArrayBuffer) requires more code to copy for TextDecoder to work.
+function copy_shared(addr, len) {
+    const buffer_view = new Uint8Array(WasmMemory.buffer, addr, len);
+    const copy_ab = new ArrayBuffer(len);
+    const copy_ab_view = new Uint8Array(copy_ab);
+    copy_ab_view.set(buffer_view, 0);
+    return TD.decode(copy_ab_view);
 }

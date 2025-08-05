@@ -37,10 +37,13 @@ flag_2.png, flag
 1_6.png, 1
 ...
 ```
-`filename` is the relative path of the training image data, while the `labels` are based on the Zig MsType enum names at `src/minesweeper`. The only label/enum that is not used is `donotcare`.
+`filename` is the relative path of the training image data, while the `labels` are based on the Zig MsType enum names at `src/minesweeper`. The only labels/enums that are not used is `donotcare`, `minenoclick`, `flagwrong`, and `chording`.
 
 The python scripts are then used to create the neural network models to detect tiles and to export the model as an `.onnx` file.
 The file is then placed into the `www` folder to be used by ONNX Runtime.
+
+## TODO
+- Play a minesweeper board functionality.
 
 ## Projects Used
 - **KaTeX** (https://katex.org) was added to this project to show and format the matrices and probability calculations

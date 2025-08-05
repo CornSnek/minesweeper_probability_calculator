@@ -7,22 +7,79 @@ pub const wasm_allocator = std.heap.wasm_allocator;
 pub const std_options: std.Options = .{
     .logFn = logger.std_options_impl.logFn,
 };
-pub const panic = wasm_print.panic;
+pub const panic = std.debug.FullPanic(wasm_print.panic);
 comptime {
     const jsalloc = @import("wasm_jsalloc.zig");
     std.mem.doNotOptimizeAway(jsalloc.WasmAlloc);
     std.mem.doNotOptimizeAway(jsalloc.WasmFree);
     std.mem.doNotOptimizeAway(jsalloc.WasmFreeAll);
     std.mem.doNotOptimizeAway(jsalloc.WasmListAllocs);
+    const rng = @import("rng.zig");
+    std.mem.doNotOptimizeAway(rng.InitRNGSeed);
+    std.mem.doNotOptimizeAway(rng.MinesweeperInitEmpty);
+    std.mem.doNotOptimizeAway(rng.ParsedWidth);
+    std.mem.doNotOptimizeAway(rng.ParsedHeight);
+    std.mem.doNotOptimizeAway(rng.ParsedNumMines);
 }
-var map_parser: ?minesweeper.MapParser = null;
-export fn CreateGrid(width: usize, height: usize) void {
-    if (map_parser) |*mp| {
-        mp.deinit(wasm_allocator);
+pub const CalculatedMap = struct {
+    map_parser: ?minesweeper.MapParser,
+    calculate_array: shared.CalculateArray,
+    mm_whole: minesweeper.MinesweeperMatrix,
+    mm_subsystems: []minesweeper.MinesweeperMatrix,
+    last_calculate_str: ?[]u8 = null,
+    pub const empty: CalculatedMap = .{
+        .map_parser = null,
+        .calculate_array = .init_error(.unknown),
+        .mm_whole = .empty,
+        .mm_subsystems = &.{},
+        .last_calculate_str = null,
+    };
+    pub fn is_probability_calculated(self: CalculatedMap) bool {
+        if (self.calculate_array.status != .ok) return false;
+        for (self.calculate_array.ptr[0..self.calculate_array.len]) |*c|
+            if (c.status != .ok) return false;
+        return true;
     }
+    /// Move all data but keep map parser clone.
+    pub fn move(self: *CalculatedMap, other: *CalculatedMap, allocator: std.mem.Allocator) !bool {
+        if (other.is_probability_calculated()) {
+            const mp_clone = try other.*.map_parser.?.clone(allocator);
+            self.deinit_all(allocator);
+            self.* = other.*;
+            other.* = .empty;
+            other.*.map_parser = mp_clone;
+            return true;
+        }
+        return false;
+    }
+    pub fn deinit_mp(self: *CalculatedMap, allocator: std.mem.Allocator) void {
+        if (self.map_parser) |*mp| mp.deinit(allocator);
+        self.map_parser = null;
+    }
+    pub fn deinit_array_and_matrices(self: *CalculatedMap, allocator: std.mem.Allocator) void {
+        self.calculate_array.deinit(allocator);
+        for (self.mm_subsystems) |*mm| mm.deinit(allocator);
+        allocator.free(self.mm_subsystems);
+        self.mm_subsystems = &.{};
+        self.mm_whole.deinit(allocator);
+        self.mm_whole = .empty;
+    }
+    pub fn deinit_last_calculate_str(self: *CalculatedMap, allocator: std.mem.Allocator) void {
+        if (self.last_calculate_str) |lcstr| allocator.free(lcstr);
+        self.last_calculate_str = null;
+    }
+    pub fn deinit_all(self: *CalculatedMap, allocator: std.mem.Allocator) void {
+        self.deinit_mp(allocator);
+        self.deinit_array_and_matrices(allocator);
+        self.deinit_last_calculate_str(allocator);
+    }
+};
+pub var cm: CalculatedMap = .empty;
+export fn CreateGrid(width: usize, height: usize) void {
+    cm.deinit_mp(wasm_allocator);
     const mp_status = minesweeper.MapParser.init(wasm_allocator, width, height);
     if (mp_status == .ok) {
-        map_parser = mp_status.ok;
+        cm.map_parser = mp_status.ok;
         wasm_print.FlushPrint(false);
     } else {
         std.log.err("Allocator error at CreateGrid\n", .{});
@@ -31,7 +88,7 @@ export fn CreateGrid(width: usize, height: usize) void {
 }
 /// Return -1 if x/y is out of range
 export fn QueryTile(x: usize, y: usize) usize {
-    if (map_parser) |mp| {
+    if (cm.map_parser) |mp| {
         if (mp.query_tile(x, y)) |t| {
             return @intFromEnum(t);
         } else {
@@ -47,7 +104,7 @@ export fn QueryTile(x: usize, y: usize) usize {
 }
 /// Returns true if error.
 export fn SetTile(x: usize, y: usize, tile: usize) bool {
-    if (map_parser) |*mp| {
+    if (cm.map_parser) |*mp| {
         mp.set_tile(x, y, tile) catch |e| {
             switch (e) {
                 error.LocationOutOfRange => {
@@ -117,38 +174,29 @@ fn stringify_matrix(
     }
     return results;
 }
-var calculate_array: shared.CalculateArray = .init_error(.unknown);
-var mm_whole: minesweeper.MinesweeperMatrix = .empty;
-var mm_subsystems: []minesweeper.MinesweeperMatrix = &.{};
-var last_calculate_str: ?[]u8 = null;
 export fn CalculateProbability() [*c]shared.CalculateArray {
     defer @atomicStore(bool, &CancelCalculation, false, .release);
     var cmp_calculate_str: []u8 = undefined;
-    if (map_parser) |mp| {
+    if (cm.map_parser) |mp| {
         cmp_calculate_str = mp.as_str(wasm_allocator) catch return 0;
     } else return 0;
     defer wasm_allocator.free(cmp_calculate_str);
-    if (calculate_array.status == .ok) {
-        for (calculate_array.ptr[0..calculate_array.len]) |*calc| {
+    if (cm.calculate_array.status == .ok) {
+        for (cm.calculate_array.ptr[0..cm.calculate_array.len]) |*calc| {
             if (calc.status == .cancelled)
                 break; //If calculation was cancelled previously, reenable recalculating again ('else if' block doesn't run).
-        } else if (last_calculate_str) |lcstr| {
+        } else if (cm.last_calculate_str) |lcstr| {
             if (std.mem.eql(u8, lcstr, cmp_calculate_str)) {
-                calculate_array.recalculated = false;
-                return &calculate_array; //If the same board, just return the same pointer without recalculation.
+                cm.calculate_array.recalculated = false;
+                return &cm.calculate_array; //If the same board, just return the same pointer without recalculation.
             }
         }
     }
-    calculate_array.deinit(wasm_allocator);
-    for (mm_subsystems) |*mm| mm.deinit(wasm_allocator);
-    wasm_allocator.free(mm_subsystems);
-    mm_subsystems = &.{};
-    mm_whole.deinit(wasm_allocator);
-    mm_whole = .empty;
+    cm.deinit_array_and_matrices(wasm_allocator);
     ClearResults();
-    if (map_parser) |mp| error_happened: {
-        mm_whole = mp.to_minesweeper_matrix(wasm_allocator) catch |e| {
-            calculate_array = switch (e) {
+    if (cm.map_parser) |mp| error_happened: {
+        cm.mm_whole = mp.to_minesweeper_matrix(wasm_allocator) catch |e| {
+            cm.calculate_array = switch (e) {
                 error.OutOfMemory => .init_error(.alloc_error),
                 else => |e2| v: {
                     std.log.err("{!}\n", .{e2});
@@ -160,16 +208,16 @@ export fn CalculateProbability() [*c]shared.CalculateArray {
         {
             const sm = "Solving minesweeper matrix:<br>";
             AppendResults(sm, sm.len);
-            var mm_whole_str = stringify_matrix(wasm_allocator, &mm_whole, true) catch {
-                calculate_array = .init_error(.alloc_error);
+            var mm_whole_str = stringify_matrix(wasm_allocator, &cm.mm_whole, true) catch {
+                cm.calculate_array = .init_error(.alloc_error);
                 break :error_happened;
             };
             defer mm_whole_str.deinit(wasm_allocator);
             AppendResults(mm_whole_str.items.ptr, mm_whole_str.items.len);
             wasm_print.FlushPrint(false);
         }
-        mm_subsystems = mm_whole.separate_subsystems(wasm_allocator) catch |e| {
-            calculate_array = switch (e) {
+        cm.mm_subsystems = cm.mm_whole.separate_subsystems(wasm_allocator) catch |e| {
+            cm.calculate_array = switch (e) {
                 error.OutOfMemory => .init_error(.alloc_error),
                 error.NoSolutions => .init_error(.no_solutions),
                 else => |e2| v: {
@@ -179,32 +227,32 @@ export fn CalculateProbability() [*c]shared.CalculateArray {
             };
             break :error_happened;
         };
-        if (mm_subsystems.len > 1) {
+        if (cm.mm_subsystems.len > 1) {
             const sm = "This matrix can be partitioned into the following subsystems:<br><br>";
             AppendResults(sm, sm.len);
-            for (mm_subsystems, 0..) |sub_mm, ss_i| {
+            for (cm.mm_subsystems, 0..) |sub_mm, ss_i| {
                 var alloc_sm: std.ArrayListUnmanaged(u8) = .empty;
                 defer alloc_sm.deinit(wasm_allocator);
                 alloc_sm.writer(wasm_allocator).print("Subsystem #{}<br>", .{ss_i}) catch {
-                    calculate_array = .init_error(.alloc_error);
+                    cm.calculate_array = .init_error(.alloc_error);
                     break :error_happened;
                 };
                 AppendResults(alloc_sm.items.ptr, alloc_sm.items.len);
                 var sub_mm_str = stringify_matrix(wasm_allocator, &sub_mm, true) catch {
-                    calculate_array = .init_error(.alloc_error);
+                    cm.calculate_array = .init_error(.alloc_error);
                     break :error_happened;
                 };
                 defer sub_mm_str.deinit(wasm_allocator);
                 AppendResults(sub_mm_str.items.ptr, sub_mm_str.items.len);
             }
         }
-        const pl_list = wasm_allocator.alloc(shared.Calculate, mm_subsystems.len) catch {
-            calculate_array = .init_error(.alloc_error);
+        const pl_list = wasm_allocator.alloc(shared.Calculate, cm.mm_subsystems.len) catch {
+            cm.calculate_array = .init_error(.alloc_error);
             break :error_happened;
         };
         for (pl_list) |*pl|
             pl.* = .init_error(.alloc_error);
-        calculate_array = .{
+        cm.calculate_array = .{
             .status = .ok,
             .recalculated = true,
             .ptr = pl_list.ptr,
@@ -215,15 +263,15 @@ export fn CalculateProbability() [*c]shared.CalculateArray {
             AppendResults(sm, sm.len);
             SetSubsystemNumber(pl_list.len);
         }
-        for (0..mm_subsystems.len) |i| {
+        for (0..cm.mm_subsystems.len) |i| {
             var alloc_sm: std.ArrayListUnmanaged(u8) = .empty;
             defer alloc_sm.deinit(wasm_allocator);
             alloc_sm.writer(wasm_allocator).print("RREF Subsystem #{}<br>", .{i}) catch {
-                calculate_array = .init_error(.alloc_error);
+                cm.calculate_array = .init_error(.alloc_error);
                 break :error_happened;
             };
             AppendResults(alloc_sm.items.ptr, alloc_sm.items.len);
-            const this_mm = &mm_subsystems[i];
+            const this_mm = &cm.mm_subsystems[i];
             const pl = this_mm.solve(wasm_allocator, i) catch |e| {
                 pl_list[i] = switch (e) {
                     error.OverFlag => .init_error(.overflag),
@@ -253,53 +301,24 @@ export fn CalculateProbability() [*c]shared.CalculateArray {
             }
             AppendResults(this_mm_str.items.ptr, this_mm_str.items.len);
         }
-        //This code shows the whole mine frequencies for the system as a whole for debugging.
-        //const whole_pl = mm_whole.solve(wasm_allocator, 0) catch |e| {
-        //    calculate_array = switch (e) {
-        //        else => |e2| v: {
-        //            std.log.err("{!}\n", .{e2});
-        //            break :v .init_error(.unknown);
-        //        },
-        //    };
-        //    break :error_happened;
-        //};
-        //defer whole_pl.deinit(wasm_allocator);
-        //std.log.debug("whole_pl total: {}\n", .{whole_pl.total});
-        //const mfs = whole_pl.mf_ptr[0..whole_pl.mf_len];
-        //const lcs = whole_pl.lc_ptr[0..whole_pl.lc_len];
-        //std.log.debug("mine_frequencies: ", .{});
-        //for (mfs) |mf| {
-        //    std.log.debug("{{ .m={}, .f={} }}, ", .{ mf.m, mf.f });
-        //}
-        //std.log.debug("\n", .{});
-        //std.log.debug("location_counts:\n", .{});
-        //for (lcs) |lc| {
-        //    std.log.debug("{{ {{ .x={}, .y={}, .count={} }} => .mf=[", .{ lc.x, lc.y, lc.count });
-        //    const lc_mfs = lc.mf_ptr[0..lc.mf_len];
-        //    for (lc_mfs) |lc_mf| {
-        //        std.log.debug("{{ .m={}, .f={} }}, ", .{ lc_mf.m, lc_mf.f });
-        //    }
-        //    std.log.debug("]}}\n", .{});
-        //}
-        //std.log.debug("\n\n", .{});
     }
     wasm_print.FlushPrint(false);
     FinalizeResults();
-    if (calculate_array.status == .ok) { //Set null if not .ok for any status
-        for (calculate_array.ptr[0..calculate_array.len]) |ca| {
+    if (cm.calculate_array.status == .ok) { //Set null if not .ok for any status
+        for (cm.calculate_array.ptr[0..cm.calculate_array.len]) |ca| {
             if (ca.status != .ok) {
-                if (last_calculate_str) |lcstr| wasm_allocator.free(lcstr);
-                last_calculate_str = null;
+                if (cm.last_calculate_str) |lcstr| wasm_allocator.free(lcstr);
+                cm.last_calculate_str = null;
             }
         } else {
-            if (last_calculate_str) |lcstr| wasm_allocator.free(lcstr);
-            last_calculate_str = wasm_allocator.dupe(u8, cmp_calculate_str) catch null;
+            if (cm.last_calculate_str) |lcstr| wasm_allocator.free(lcstr);
+            cm.last_calculate_str = wasm_allocator.dupe(u8, cmp_calculate_str) catch null;
         }
     } else {
-        if (last_calculate_str) |lcstr| wasm_allocator.free(lcstr);
-        last_calculate_str = null;
+        if (cm.last_calculate_str) |lcstr| wasm_allocator.free(lcstr);
+        cm.last_calculate_str = null;
     }
-    return &calculate_array;
+    return &cm.calculate_array;
 }
 pub extern fn ClearResults() void;
 pub extern fn AppendResults([*c]const u8, usize) void;

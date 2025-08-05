@@ -3,7 +3,7 @@ pub const std_options_impl = if (@import("builtin").os.tag != .freestanding) Non
 const NonWasmLog = struct {
     pub fn logFn(
         comptime _: std.log.Level,
-        comptime _: @Type(.EnumLiteral),
+        comptime _: @Type(.enum_literal),
         comptime format: []const u8,
         args: anytype,
     ) void {

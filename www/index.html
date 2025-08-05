@@ -22,6 +22,32 @@
 
 <body>
   <canvas id="canvas-tile" style="display: none;" width="32" height="32"></canvas>
+  <div id="play-body">
+    <div id="play-container">
+      <div class="play-element">
+        <a href="#" id="close-play-body" class="close-options-panel"><strong class="badge">Close</strong></a>
+      </div>
+      <div class="play-element">
+        <button type="button" id="play-upload-current-board">Upload Current Board</button>
+        <label for="play-sandbox">Sandbox Mode</label><input type="checkbox" id="play-sandbox">
+        <label for="play-seed">Random Seed</label> <input id="play-seed" type="number" value="0" step="1" disabled>
+        <label for="play-seed-manual">Manual Seed</label>
+        <input type="checkbox" id="play-seed-manual">
+        <textarea id="play-board-data" cols="180"></textarea>
+        <br>
+        <button type="button" id="play-new-game">New Game</button>
+        <br>
+        Mines Left: <output id="play-mines-left">0</output>
+        Timer: <output id="play-timer">000</output>
+        <br>
+        <output id="play-status"></output>
+      </div>
+      <div id="play-board-container" class="play-element no-highlight">
+        <div id="play-board" class="tile-template" style="--size-tile: 20px; --size-image: 15px;">
+        </div>
+      </div>
+    </div>
+  </div>
   <div id="upload-body">
     <div id="upload-container">
       <div class="upload-element">
@@ -53,52 +79,17 @@
       </div>
     </div>
   </div>
-  <div id="flash-body">
-    <div id="flash-content"></div>
-  </div>
-  <div id="grid-body" class="no-highlight"></div>
-  <div id="all-right-tabs" class="right-tabs-normal">
-    <div class="tabs-button" data-tab="about-tab">
-      About
-    </div>
-    <div id="progress-div" style="display: none;">
-      <progress id="subsystem-progress" value="0"></progress>
-      <progress id="calculate-progress" value="0"></progress>
-    </div>
-    <div id="calculate-probability" class="tabs-button">
-      Calculate Probability <strong class="badge">Shift</strong>+<strong class="badge">Enter</strong>
-    </div>
-    <div id="results-tab-button" class="tabs-button" data-tab="results-tab">
-      Results
-    </div>
-    <div id="clear-probability-button" class="tabs-button">
-      Clear Results
-    </div>
+  <div id="config" class="window no-highlight window-hide" data-left="0" data-top="0" data-dragx="0" data-dragy="0">
+    <div class="window-header"><div>Configuration</div><div><strong id="config-window-close" class="badge window-close">Close</strong></div></div>
     <div>
-      <label for="show-solution-check">Solutions</label>
-      <input type="checkbox" id="show-solution-check" disabled>
-      <br>
-      <label for="show-solution-seed">Configuration</label>
-      <input id="show-solution-seed" type="number" value="0" step="1" min="0" max="0" size="3" disabled>
-      <br>
-      <label for="show-solution-subsystem">Subsystem</label>
-      <input id="show-solution-subsystem" type="number" value="0" min="0" max="0" size="3" disabled>
-      <br>
-      <div id="show-solution-output"></div>
-    </div>
-    <div id="parse-screenshot-popup" class="tabs-button">
-      Parse Minesweeper Screenshot
-    </div>
-    <div>
-      <label for="tile-size-num">Tile Size</label>
-      <input id="tile-size-num" type="number" value="32" step="1" min="20" max="100" size="2">
       <label for="columns-num">Columns</label>
       <input id="columns-num" type="number" value="10" step="1" min="1" max="100" size="3">
-      <br>
       <label for="rows-num">Rows</label>
       <input id="rows-num" type="number" value="10" step="1" min="1" max="100" size="3">
-      <br>
       <button type="button" id="generate-grid">Generate</button>
+      <br>
+      <label for="tile-size-num">Tile Size</label>
+      <input id="tile-size-num" type="number" value="32" step="1" min="20" max="100" size="2">
       <br>
       <label for="select-probability">Select Probability</label>
       <select id="select-probability">
@@ -107,11 +98,49 @@
         <option value="Global">Global</option>
       </select>
       <br>
-      <label for="gm-count">Global Count</label>
+      <label for="gm-count">Mine Count</label>
       <input id="gm-count" type="number" value="10" step="1" min="0" size="5">
       <br>
       <label for="include-flags">Include Flags</label>
       <input type="checkbox" id="include-flags">
+      <br>
+      <label for="show-solution-check">Solutions</label>
+      <input type="checkbox" id="show-solution-check" disabled>
+      <label for="show-solution-seed">Configuration</label>
+      <input id="show-solution-seed" type="number" value="0" step="1" min="0" max="0" size="3" disabled>
+      <label for="show-solution-subsystem">Subsystem</label>
+      <input id="show-solution-subsystem" type="number" value="0" min="0" max="0" size="3" disabled>
+      <br>
+      <div id="show-solution-output"></div>
+    </div>
+  </div>
+  <div id="flash-body">
+    <div id="flash-content"></div>
+  </div>
+  <div id="grid-body" class="no-highlight"></div>
+  <div id="all-right-tabs" class="right-tabs-normal no-highlight">
+    <div class="tabs-button" data-tab="about-tab">
+      About
+    </div>
+    <div id="show-config-window" class="tabs-button">Configurations <strong class="badge">Shift</strong>+<strong class="badge">O</strong></div>
+    <div id="calculate-probability" class="tabs-button">
+      Calculate Probability <strong class="badge">Shift</strong>+<strong class="badge">Enter</strong>
+    </div>
+    <div id="progress-div" style="display: none;">
+      <progress id="subsystem-progress" value="0"></progress>
+      <progress id="calculate-progress" value="0"></progress>
+    </div>
+    <div id="results-tab-button" class="tabs-button" data-tab="results-tab">
+      Results
+    </div>
+    <div id="clear-probability-button" class="tabs-button">
+      Clear Results
+    </div>
+    <div id="parse-screenshot-popup" class="tabs-button">
+      Parse Screenshot
+    </div>
+    <div id="play-current-board" class="tabs-button">
+      Play Current Board <strong class="badge">Shift</strong>+<strong class="badge">P</strong>
     </div>
     <div id="clear-all-button" class="tabs-button">
       Clear All Tiles <strong class="badge">Shift</strong>+<strong class="badge">Delete</strong>

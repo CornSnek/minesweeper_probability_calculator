@@ -6,7 +6,7 @@
     --bg-1: #2f2f2f;
     --bg-2: gray;
     --bg-3: #5f5f5f;
-    --hovered-tile: #D0D0D0;
+    --hovered-tile: #DFDFDF;
     --selected-tile: #EFEFEF;
     --ms-unknown: #C0C0C0;
     --ms-clicked: #B0B0B0;
@@ -306,4 +306,59 @@ a:hover {
 .img-tile {
     width: var(--size-image);
     height: var(--size-image);
+}
+
+#play-body {
+    display: none;
+    position: fixed;
+    background-color: var(--bg-3);
+    width: 100%;
+    left: 0;
+    height: 100%;
+    top: 0;
+    z-index: 6;
+    box-shadow: 0px 0px 5px black;
+    padding: 10px;
+}
+
+#play-container {
+    position: fixed;
+    width: calc(100% - 20px);
+    height: calc(100% - 40px);
+    display: grid;
+    grid-template-rows: 10% 20% 70%;
+    gap: 10px;
+}
+
+.play-element {
+    padding: 10px;
+    background-color: var(--bg-1);
+    overflow: auto;
+}
+
+.window {
+    position: fixed;
+    top: 0px;
+    left: 0px;
+    width: 500px;
+    height: 200px;
+    z-index: 5;
+    box-shadow: 0px 0px 5px black;
+    background-color: var(--bg-3);
+}
+
+.window-header {
+    background-color: var(--bg-1);
+    cursor: move;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+
+.window-hide {
+    display: none;
+}
+
+#config-window-close {
+    cursor: pointer;
 }

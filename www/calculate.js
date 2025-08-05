@@ -16,7 +16,12 @@ function SetTimeoutProgress(subsystem_id, progress) {
     postMessage(['SetTimeoutProgress', subsystem_id, progress]);
 }
 function CalculateProbability() {
-    postMessage(['parse_probability_list', WasmExports.CalculateProbability()]);
+    try {
+        postMessage(['parse_probability_list', WasmExports.CalculateProbability()]);
+    } catch (e) {
+        console.error(e.message);
+        console.trace();
+    }
 }
 async function onmessage_f(e) {
     if (e.data[0] == 'f') {

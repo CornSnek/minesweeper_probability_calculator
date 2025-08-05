@@ -1,0 +1,73 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<!-- Created with Inkscape (http://www.inkscape.org/) -->
+
+<svg
+   width="120"
+   height="120"
+   viewBox="0 0 120 120"
+   version="1.1"
+   id="svg1"
+   inkscape:version="1.4.2 (ebf0e940d0, 2025-05-08)"
+   sodipodi:docname="flag_wrong.svg"
+   xmlns:inkscape="http://www.inkscape.org/namespaces/inkscape"
+   xmlns:sodipodi="http://sodipodi.sourceforge.net/DTD/sodipodi-0.dtd"
+   xmlns="http://www.w3.org/2000/svg"
+   xmlns:svg="http://www.w3.org/2000/svg">
+  <sodipodi:namedview
+     id="namedview1"
+     pagecolor="#ffffff"
+     bordercolor="#000000"
+     borderopacity="0.25"
+     inkscape:showpageshadow="2"
+     inkscape:pageopacity="0.0"
+     inkscape:pagecheckerboard="0"
+     inkscape:deskcolor="#d1d1d1"
+     inkscape:document-units="px"
+     inkscape:zoom="0.38958334"
+     inkscape:cx="-581.39037"
+     inkscape:cy="204.06417"
+     inkscape:window-width="1736"
+     inkscape:window-height="814"
+     inkscape:window-x="13"
+     inkscape:window-y="198"
+     inkscape:window-maximized="0"
+     inkscape:current-layer="layer1"
+     showgrid="false"
+     showguides="true" />
+  <defs
+     id="defs1">
+    <rect
+       x="0"
+       y="0"
+       width="120"
+       height="120.27149"
+       id="rect1" />
+    <rect
+       x="0"
+       y="0"
+       width="120"
+       height="120.27149"
+       id="rect1-7" />
+  </defs>
+  <g
+     inkscape:label="Layer 1"
+     inkscape:groupmode="layer"
+     id="layer1">
+    <path
+       id="rect3-8"
+       style="stroke-width:0.182574"
+       d="M 50,60 H 70 V 80 H 50 Z M 50,51.428571 70,60 H 50 Z M 20,80 h 80 v 20 H 20 Z M 0,100 h 120 v 20 H 0 Z" />
+    <path
+       id="rect4"
+       style="fill:#ff000f"
+       d="M 0,30 70,0 v 60 z"
+       sodipodi:nodetypes="cccc" />
+    <path
+       d="M 55.21875,84.9375 H 39.1875 C 29.157439,66.404616 16.311534,49.581811 4.125,32.4375 h 16.03125 c 9.694703,18.702453 22.978578,35.234147 35.0625,52.5 z"
+       id="text1"
+       style="font-weight:bold;font-size:96px;font-family:'DejaVu Sans Mono';-inkscape-font-specification:'DejaVu Sans Mono Bold';white-space:pre;fill:#800000;fill-opacity:1"
+       transform="matrix(2.2796082,0,0,2.2857143,-5.8771149,-74.142858)"
+       aria-label="x"
+       sodipodi:nodetypes="ccccc" />
+  </g>
+</svg>

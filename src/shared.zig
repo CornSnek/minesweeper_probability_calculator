@@ -62,3 +62,7 @@ pub const CalculateArray = extern struct {
     }
 };
 pub const TestTypeInfo = @import("print_wasm32_info.zig").TestTypeInfo;
+pub const StringSlice = extern struct {
+    ptr: [*c]const u8,
+    len: usize,
+};

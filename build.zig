@@ -191,7 +191,6 @@ pub fn build(b: *std.Build) !void {
     wasm_exe.shared_memory = true;
     wasm_exe.entry = .disabled;
     wasm_exe.rdynamic = true;
-
     wasm_exe.root_module.export_symbol_names = &.{
         "WasmListAllocs",
         "WasmAlloc",
@@ -205,6 +204,17 @@ pub fn build(b: *std.Build) !void {
         "QueryTile",
         "SetTile",
         "CalculateProbability",
+        "InitRNGSeed",
+        "MinesweeperInitEmpty",
+        "ParseMineSeed",
+        "ParsedWidth",
+        "ParsedHeight",
+        "ParsedNumMines",
+        "GetMineBoard",
+        "GetLeftClickBoard",
+        "GetRightClickBoard",
+        "GetMineSeed",
+        "UploadCurrentBoard",
     };
     const install_wasm = b.addInstallArtifact(wasm_exe, .{
         .dest_sub_path = try std.fmt.allocPrint(b.allocator, "{s}/{s}.wasm", .{ www_root, program_name }),
