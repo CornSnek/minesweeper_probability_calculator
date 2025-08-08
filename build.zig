@@ -215,6 +215,8 @@ pub fn build(b: *std.Build) !void {
         "GetRightClickBoard",
         "GetMineSeed",
         "UploadCurrentBoard",
+        "HasUploaded",
+        "CheckCurrentBoard",
     };
     const install_wasm = b.addInstallArtifact(wasm_exe, .{
         .dest_sub_path = try std.fmt.allocPrint(b.allocator, "{s}/{s}.wasm", .{ www_root, program_name }),

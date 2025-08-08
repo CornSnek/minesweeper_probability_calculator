@@ -1,8 +1,16 @@
 const std = @import("std");
-const allocator = @import("root").wasm_allocator;
+const wasm_allocator = @import("root").wasm_allocator;
 const CalculatedMap = @import("root").CalculatedMap;
 const wasm_jsalloc = @import("wasm_jsalloc.zig");
 const StringSlice = @import("shared.zig").StringSlice;
+var error_slice: StringSlice = .empty;
+fn add_error_slice(err_msg: []u8) void {
+    wasm_jsalloc.slice_to_js(err_msg) catch {
+        wasm_allocator.free(err_msg);
+        allocation_error();
+    };
+    error_slice = .{ .len = err_msg.len, .ptr = err_msg.ptr };
+}
 var cm: CalculatedMap = .empty;
 var prng: std.Random.Xoshiro256 = .init(0);
 pub export fn InitRNGSeed(seed: u64) void {
@@ -38,12 +46,24 @@ pub export fn GetMineSeed() [*c]StringSlice {
     return &mine_seed_ext;
 }
 ///Length is (width * height + 7) / 8 for javascript
-pub export fn MinesweeperInitEmpty(num_mines: u32, width: u32, height: u32, safe_click: u32) void {
+pub export fn MinesweeperInitEmpty(num_mines: u32, width: u32, height: u32, safe_click: u32) [*c]StringSlice {
     const wtimesh = width * height;
-    std.debug.assert(num_mines <= width * height and wtimesh != 0);
+    if (wtimesh == 0) {
+        const err_msg = std.fmt.allocPrint(wasm_allocator, "Rows and Columns cannot be 0.", .{}) catch allocation_error();
+        add_error_slice(err_msg);
+        return &error_slice;
+    }
+    if (num_mines > width * height) {
+        const err_msg = std.fmt.allocPrint(wasm_allocator, "Mine Count ({}) cannot exceed the number of Columns * Rows = {}", .{
+            num_mines,
+            width * height,
+        }) catch allocation_error();
+        add_error_slice(err_msg);
+        return &error_slice;
+    }
     clear_board();
     if (wtimesh != num_mines) {
-        mine_board.appendNTimes(allocator, 0, (wtimesh + 7) / 8) catch allocation_error();
+        mine_board.appendNTimes(wasm_allocator, 0, (wtimesh + 7) / 8) catch allocation_error();
         var mines_left: u32 = num_mines;
         while (mines_left != 0) {
             const add_i = prng.random().uintLessThan(usize, wtimesh);
@@ -57,38 +77,37 @@ pub export fn MinesweeperInitEmpty(num_mines: u32, width: u32, height: u32, safe
             }
         }
     } else {
-        mine_board.appendNTimes(allocator, std.math.maxInt(u8), (wtimesh + 7) / 8) catch allocation_error();
+        mine_board.appendNTimes(wasm_allocator, std.math.maxInt(u8), (wtimesh + 7) / 8) catch allocation_error();
     }
-    std.log.debug("[ ", .{});
-    for (mine_board.items) |c| {
-        std.log.debug("{x}, ", .{c});
-    }
-    std.log.debug(" ]\n", .{});
-    mine_seed.clearRetainingCapacity();
     write_mine_seed(width, height) catch allocation_error();
-    std.log.debug("{s}\n", .{mine_seed.items});
-    @import("wasm_print.zig").FlushPrint(false);
+    return 0;
 }
 fn write_mine_seed(width: u32, height: u32) !void {
-    const writer = mine_seed.writer(allocator);
+    mine_seed.clearRetainingCapacity();
+    const writer = mine_seed.writer(wasm_allocator);
     try writer.print("{}x{}, ", .{ width, height });
     try writer.writeAll("m=");
     for (mine_board.items) |ch| try writer.print("{x:0>2}", .{ch});
     try writer.writeByte('.');
+    if (left_click_board.items.len != 0) {
+        try writer.writeAll(" l=");
+        for (left_click_board.items) |ch| try writer.print("{x:0>2}", .{ch});
+        try writer.writeByte('.');
+    }
+    if (right_click_board.items.len != 0) {
+        try writer.writeAll(" r=");
+        for (right_click_board.items) |ch| try writer.print("{x:0>2}", .{ch});
+        try writer.writeByte('.');
+    }
 }
-var parse_mine_seed_err: StringSlice = undefined;
 pub export fn ParseMineSeed(ptr: [*c]u8, len: usize) [*c]StringSlice {
     if (ptr == 0 or len == 0) {
         @panic("ptr or len is 0");
     }
     const error_msg = parse_mine_seed(ptr[0..len]);
     if (error_msg) |em| {
-        wasm_jsalloc.slice_to_js(em) catch {
-            allocator.free(em);
-            allocation_error();
-        };
-        parse_mine_seed_err = .{ .len = em.len, .ptr = em.ptr };
-        return &parse_mine_seed_err;
+        add_error_slice(em);
+        return &error_slice;
     } else return 0;
 }
 const Transition = struct {
@@ -206,17 +225,17 @@ fn parse_mine_seed(seed_str: []const u8) ?[]u8 {
     var var_to_use: u8 = undefined;
     var buf_to_use: *std.ArrayListUnmanaged(u8) = undefined;
     var str_buf: std.ArrayListUnmanaged(u8) = .empty;
-    defer str_buf.deinit(allocator);
+    defer str_buf.deinit(wasm_allocator);
     for (seed_str, 0..) |ch, i| {
         state_now = ParseMineRegexStates[state_now].next(ch);
         switch (@as(BoardInfoState, @enumFromInt(state_now))) {
             BoardInfoState.@"error" => {
-                return std.fmt.allocPrint(allocator, "Invalid character: '{c}' at index #{}", .{ ch, i }) catch allocation_error();
+                return std.fmt.allocPrint(wasm_allocator, "Invalid character: '{c}' at index #{}", .{ ch, i }) catch allocation_error();
             },
             BoardInfoState.width_begin,
             BoardInfoState.height_begin,
             BoardInfoState.byte_begin,
-            => str_buf.append(allocator, ch) catch allocation_error(),
+            => str_buf.append(wasm_allocator, ch) catch allocation_error(),
             BoardInfoState.width_end => {
                 parsed_width = std.fmt.parseInt(u32, str_buf.items, 10) catch allocation_error();
                 str_buf.clearRetainingCapacity();
@@ -238,9 +257,9 @@ fn parse_mine_seed(seed_str: []const u8) ?[]u8 {
             },
             BoardInfoState.var_use => {},
             BoardInfoState.byte_end => {
-                str_buf.append(allocator, ch) catch allocation_error();
+                str_buf.append(wasm_allocator, ch) catch allocation_error();
                 const byte = std.fmt.parseInt(u8, str_buf.items, 16) catch allocation_error();
-                buf_to_use.append(allocator, byte) catch allocation_error();
+                buf_to_use.append(wasm_allocator, byte) catch allocation_error();
                 str_buf.clearRetainingCapacity();
             },
             BoardInfoState.complete => {
@@ -248,10 +267,10 @@ fn parse_mine_seed(seed_str: []const u8) ?[]u8 {
                     const expected_size: u32 = ((parsed_width * parsed_height) + 7) / 8;
                     switch (var_to_use) {
                         'l', 'r' => |vstr| if (buf_to_use.items.len != expected_size)
-                            return std.fmt.allocPrint(allocator, "Length of {} string must be the size of ceil((width * height) / 8) * 2, or {}", .{ vstr, expected_size * 2 }) catch allocation_error(),
+                            return std.fmt.allocPrint(wasm_allocator, "Length of {} string must be the size of ceil((width * height) / 8) * 2, or {}", .{ vstr, expected_size * 2 }) catch allocation_error(),
                         'm' => {
                             if (mine_board.items.len != expected_size)
-                                return std.fmt.allocPrint(allocator, "Length of m string must be the size of ceil((width * height) / 8) * 2, or {}", .{expected_size * 2}) catch allocation_error();
+                                return std.fmt.allocPrint(wasm_allocator, "Length of m string must be the size of ceil((width * height) / 8) * 2, or {}", .{expected_size * 2}) catch allocation_error();
                             var board_mines: usize = 0;
                             const lower_bits_mask: u8 = nth_lower_bits_mask(@truncate((parsed_width * parsed_height) % 8));
                             for (0..mine_board.items.len - 1) |j| {
@@ -259,7 +278,7 @@ fn parse_mine_seed(seed_str: []const u8) ?[]u8 {
                                 board_mines += @popCount(mch);
                             }
                             const last_byte = mine_board.getLast();
-                            board_mines += @popCount(last_byte & lower_bits_mask);
+                            board_mines += if (lower_bits_mask != 0) @popCount(last_byte & lower_bits_mask) else @popCount(last_byte);
                             parsed_num_mines = board_mines;
                         },
                         else => unreachable,
@@ -270,16 +289,209 @@ fn parse_mine_seed(seed_str: []const u8) ?[]u8 {
         }
     }
     if (!ParseMineRegexStates[state_now].accept)
-        return allocator.dupe(u8, "Seed string must end with a '.'") catch allocation_error();
+        return wasm_allocator.dupe(u8, "Seed string must end with a '.'") catch allocation_error();
     return null;
 }
 fn nth_lower_bits_mask(n: u3) u8 {
     return (@as(u8, 1) << n) -% 1;
 }
+export fn UploadCurrentBoard() bool {
+    const root_cm: *CalculatedMap = &@import("root").cm;
+    return cm.move(root_cm, wasm_allocator) catch allocation_error();
+}
+pub const BoardData = struct {
+    include_mine_flags: bool,
+    adj_mine_count: isize,
+    all_mines_count: isize,
+    non_adjacent_tiles: isize = 0,
+    least_solution_mines: isize = 0,
+    most_solution_mines: isize = 0,
+    pub fn init(global_mine_count: isize, include_mine_flags: bool) BoardData {
+        return .{
+            .include_mine_flags = include_mine_flags,
+            .all_mines_count = global_mine_count,
+            .adj_mine_count = global_mine_count,
+        };
+    }
+};
+///The error messages are similar to global calculation in index.js
+fn get_board_data(global_mine_count: isize, include_mine_flags: bool) ?BoardData {
+    var bd: BoardData = .init(global_mine_count, include_mine_flags);
+    var total_flag_mines: isize = 0;
+    for (cm.map_parser.?.map.items) |ms_type| {
+        if (ms_type == .unknown) {
+            bd.non_adjacent_tiles += 1;
+        } else if (include_mine_flags) {
+            if (ms_type == .flag or ms_type == .mine) {
+                bd.adj_mine_count -= 1;
+                total_flag_mines += 1;
+            }
+        } else {
+            if (ms_type == .flag or ms_type == .mine) {
+                bd.all_mines_count += 1;
+                total_flag_mines += 1;
+            }
+        }
+    }
+    if (bd.adj_mine_count < 0) {
+        var err_msg: []u8 = undefined;
+        if (include_mine_flags) {
+            err_msg = std.fmt.allocPrint(wasm_allocator, "Error: The mines + flags placed ({}) exceeds the global mine count ({}).", .{
+                total_flag_mines,
+                global_mine_count,
+            }) catch allocation_error();
+        } else {
+            err_msg = std.fmt.allocPrint(wasm_allocator, "Error: Global mine count is less than 0.", .{}) catch allocation_error();
+        }
+        add_error_slice(err_msg);
+        return null;
+    }
+    for (cm.mm_subsystems) |*mm_sub| {
+        bd.non_adjacent_tiles -= @bitCast(mm_sub.tm.idtol.items.len);
+        for (mm_sub.sb.get_range_bits(0)) |*b| {
+            bd.least_solution_mines += @popCount(b.*);
+        }
+        for (mm_sub.sb.get_range_bits(mm_sub.sb.data.items.len / mm_sub.sb.number_bytes - 1)) |*b| {
+            bd.most_solution_mines += @popCount(b.*);
+        }
+    }
+    if (bd.adj_mine_count < bd.least_solution_mines) {
+        var err_msg: []u8 = undefined;
+        if (include_mine_flags) {
+            err_msg = std.fmt.allocPrint(wasm_allocator, "Error: Too little mines! The global mine count is {} - ({} mines + flags) = {}. All solutions require at least {} or more mines. Global mine count must be >= {}.", .{
+                bd.all_mines_count,
+                total_flag_mines,
+                bd.adj_mine_count,
+                bd.least_solution_mines,
+                total_flag_mines + bd.least_solution_mines,
+            }) catch allocation_error();
+        } else {
+            err_msg = std.fmt.allocPrint(wasm_allocator, "Error: Too little mines! The global mine count is {}. All solutions require at least {[1]} or more mines. Global mine count must be >= {[1]}.", .{
+                bd.adj_mine_count,
+                bd.least_solution_mines,
+            }) catch allocation_error();
+        }
+        add_error_slice(err_msg);
+        return null;
+    }
+    if (bd.adj_mine_count > bd.most_solution_mines + bd.non_adjacent_tiles) {
+        var err_msg: []u8 = undefined;
+        if (include_mine_flags) {
+            err_msg = std.fmt.allocPrint(wasm_allocator, "Error: Too many mines! The global mine count is {} - ({} mines + flags) = {}. One solution has a maximum of {} mines and there are only {} non-adjacent tiles to fill, resulting in the sum of only {} mines. Global mine count must be <= {}.", .{
+                bd.all_mines_count,
+                total_flag_mines,
+                bd.adj_mine_count,
+                bd.most_solution_mines,
+                bd.non_adjacent_tiles,
+                bd.most_solution_mines + bd.non_adjacent_tiles,
+                total_flag_mines + bd.most_solution_mines + bd.non_adjacent_tiles,
+            }) catch allocation_error();
+        } else {
+            err_msg = std.fmt.allocPrint(wasm_allocator, "Error: Too many mines! The global mine count is {}. One solution has a maximum of {} mines and there are only {} non-adjacent tiles to fill, resulting in the sum of only {[3]} mines. Global mine count must be <= {[3]}.", .{
+                bd.adj_mine_count,
+                bd.most_solution_mines,
+                bd.non_adjacent_tiles,
+                bd.most_solution_mines + bd.non_adjacent_tiles,
+            }) catch allocation_error();
+        }
+        add_error_slice(err_msg);
+        return null;
+    }
+    return bd;
+}
+export fn HasUploaded() bool {
+    return cm.is_probability_calculated();
+}
+export fn CheckCurrentBoard(global_mine_count: isize, include_mine_flags: bool) [*c]StringSlice {
+    std.debug.assert(cm.is_probability_calculated());
+    _ = get_board_data(global_mine_count, include_mine_flags) orelse return &error_slice;
+    return 0;
+}
 fn allocation_error() noreturn {
     @panic("Allocation error.");
 }
-export fn UploadCurrentBoard() bool {
-    const root_cm: *CalculatedMap = &@import("root").cm;
-    return cm.move(root_cm, allocator) catch allocation_error();
+const ByteBit = struct {
+    byte: usize,
+    bit: u8,
+    fn init_xy(x: usize, y: usize, width: usize) ByteBit {
+        return .init_i(y * width + x);
+    }
+    fn init_i(i: usize) ByteBit {
+        return .{ .byte = i / 8, .bit = @as(u8, 1) << @truncate(i & 0b111) };
+    }
+};
+fn minesweeper_init_board(global_mine_count: isize, include_mine_flags: bool) ![*c]StringSlice {
+    std.debug.assert(cm.is_probability_calculated());
+    clear_board();
+    const bd = get_board_data(global_mine_count, include_mine_flags) orelse return &error_slice;
+    const board_size: u32 = (@as(u32, @truncate(cm.map_parser.?.map.items.len)) + 7) / 8;
+    try mine_board.appendNTimes(wasm_allocator, 0, board_size);
+    try left_click_board.appendNTimes(wasm_allocator, 0, board_size);
+    try right_click_board.appendNTimes(wasm_allocator, 0, board_size);
+    for (cm.map_parser.?.map.items, 0..) |ms_type, i| {
+        const bb: ByteBit = .init_i(i);
+        if (ms_type == .mine) {
+            mine_board.items[bb.byte] |= bb.bit;
+        }
+        if (ms_type == .flag) {
+            right_click_board.items[bb.byte] |= bb.bit;
+            mine_board.items[bb.byte] |= bb.bit; //Mine in flag
+        }
+        if (ms_type.is_number())
+            left_click_board.items[bb.byte] |= bb.bit;
+    }
+    var mines_left = bd.adj_mine_count;
+    var i_array: std.ArrayListUnmanaged(usize) = .empty;
+    defer i_array.deinit(wasm_allocator);
+    while (true) {
+        i_array.clearRetainingCapacity();
+        var total_number_mines: usize = 0;
+        for (cm.mm_subsystems) |*mms| {
+            const len_solutions = mms.sb.data.items.len / mms.sb.number_bytes;
+            const random_i = prng.random().uintLessThan(usize, len_solutions);
+            total_number_mines += mms.sb.get_popcount(random_i);
+            try i_array.append(wasm_allocator, random_i);
+        }
+        if (mines_left < total_number_mines) continue; //Only use valid mine count solutions within ranges.
+        if (mines_left - bd.non_adjacent_tiles > total_number_mines) continue;
+        mines_left -= @bitCast(total_number_mines);
+        break;
+    }
+    for (0..cm.mm_subsystems.len) |i| {
+        const idtol = &cm.mm_subsystems[i].tm.idtol;
+        for (0..idtol.items.len) |j| {
+            const l_bb: ByteBit = .init_xy(idtol.items[j].x, idtol.items[j].y, cm.map_parser.?.width);
+            left_click_board.items[l_bb.byte] |= l_bb.bit; //left_click_board idtol used as mask to add remaining leftover mines.
+        }
+    }
+    const wtimesh: usize = cm.map_parser.?.width * cm.map_parser.?.height;
+    while (mines_left > 0) {
+        const add_i = prng.random().uintLessThan(usize, wtimesh);
+        const bb: ByteBit = .init_i(add_i);
+        if (left_click_board.items[bb.byte] & bb.bit == 0 and right_click_board.items[bb.byte] & bb.bit == 0 and mine_board.items[bb.byte] & bb.bit == 0) {
+            mine_board.items[bb.byte] |= bb.bit;
+            mines_left -= 1;
+        }
+    }
+    for (i_array.items, 0..) |ri, i| {
+        const solution_bits = cm.mm_subsystems[i].sb.get_range_bits(ri);
+        const idtol = &cm.mm_subsystems[i].tm.idtol;
+        for (0..idtol.items.len) |j| {
+            const sb_byte: usize = j / 32;
+            const sb_bit: u32 = @as(u32, 1) << @truncate(j & 0b11111);
+            const l_bb: ByteBit = .init_xy(idtol.items[j].x, idtol.items[j].y, cm.map_parser.?.width);
+            if (solution_bits[sb_byte] & sb_bit != 0) { //Add solution mines to mine_board
+                mine_board.items[l_bb.byte] |= l_bb.bit;
+            }
+            left_click_board.items[l_bb.byte] ^= l_bb.bit; //Clear left_click_board idtol mask
+        }
+    }
+    write_mine_seed(@truncate(cm.map_parser.?.width), @truncate(cm.map_parser.?.height)) catch allocation_error();
+    parsed_width = @truncate(cm.map_parser.?.width);
+    parsed_height = @truncate(cm.map_parser.?.height);
+    parsed_num_mines = @truncate(@as(usize, @bitCast(bd.all_mines_count)));
+    return 0;
+}
+pub export fn MinesweeperInitBoard(global_mine_count: isize, include_mine_flags: bool) [*c]StringSlice {
+    return minesweeper_init_board(global_mine_count, include_mine_flags) catch allocation_error();
 }

@@ -365,6 +365,18 @@ pub const SolutionBits = struct {
     pub fn get_solution_bits_extern(self: SolutionBits) SolutionBitsExtern {
         return .{ .ptr = self.data.items.ptr, .len = self.data.items.len, .number_bytes = self.number_bytes };
     }
+    pub fn get_popcount(self: SolutionBits, i: usize) usize {
+        std.debug.assert(i * self.number_bytes < self.data.items.len);
+        const adj_i: usize = i * self.number_bytes;
+        for (self.metadata.items) |sbr|
+            if (adj_i >= sbr.begin and adj_i <= sbr.end)
+                return sbr.pc;
+        @panic("Shouldn't reach here");
+    }
+    pub fn get_range_bits(self: SolutionBits, i: usize) []const u32 {
+        std.debug.assert(i * self.number_bytes < self.data.items.len);
+        return self.data.items[i * self.number_bytes .. (i + 1) * self.number_bytes];
+    }
     pub fn append(self: *SolutionBits, allocator: std.mem.Allocator, bui: big_number.BigUInt) !void {
         std.debug.assert(bui.bytes.items.len == self.number_bytes);
         const pc = bui.pop_count();

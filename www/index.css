@@ -338,11 +338,11 @@ a:hover {
 
 .window {
     position: fixed;
-    top: 0px;
-    left: 0px;
+    top: calc(100% - 200px);
+    left: 0;
     width: 500px;
     height: 200px;
-    z-index: 5;
+    z-index: 6;
     box-shadow: 0px 0px 5px black;
     background-color: var(--bg-3);
 }

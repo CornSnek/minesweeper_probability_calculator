@@ -36,6 +36,7 @@
         <textarea id="play-board-data" cols="180"></textarea>
         <br>
         <button type="button" id="play-new-game">New Game</button>
+        <button type="button" id="play-new-game-with-board">New Game With Board</button>
         <br>
         Mines Left: <output id="play-mines-left">0</output>
         Timer: <output id="play-timer">000</output>
@@ -79,8 +80,8 @@
       </div>
     </div>
   </div>
-  <div id="config" class="window no-highlight window-hide" data-left="0" data-top="0" data-dragx="0" data-dragy="0">
-    <div class="window-header"><div>Configuration</div><div><strong id="config-window-close" class="badge window-close">Close</strong></div></div>
+  <div id="config" class="window no-highlight" data-left="0" data-top="1000000" data-dragx="0" data-dragy="0">
+    <div class="window-header"><div>Configurations</div><div><strong id="config-window-close" class="badge window-close">Close</strong></div></div>
     <div>
       <label for="columns-num">Columns</label>
       <input id="columns-num" type="number" value="10" step="1" min="1" max="100" size="3">
@@ -122,7 +123,7 @@
     <div class="tabs-button" data-tab="about-tab">
       About
     </div>
-    <div id="show-config-window" class="tabs-button">Configurations <strong class="badge">Shift</strong>+<strong class="badge">O</strong></div>
+    <div id="show-config-window" class="tabs-button tab-selected">Configurations <strong class="badge">Shift</strong>+<strong class="badge">O</strong></div>
     <div id="calculate-probability" class="tabs-button">
       Calculate Probability <strong class="badge">Shift</strong>+<strong class="badge">Enter</strong>
     </div>

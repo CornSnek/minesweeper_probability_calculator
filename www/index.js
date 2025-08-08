@@ -162,6 +162,7 @@ async function init() {
     play_seed = document.getElementById('play-seed');
     play_status = document.getElementById('play-status');
     play_new_game = document.getElementById('play-new-game');
+    play_new_game_with_board = document.getElementById('play-new-game-with-board');
     play_seed_manual = document.getElementById('play-seed-manual');
     play_sandbox = document.getElementById('play-sandbox');
     calculate_probability = document.getElementById('calculate-probability');
@@ -376,7 +377,7 @@ async function init() {
     rows_num.onclick = deselect_tiles_f;
     gm_count.onclick = deselect_tiles_f;
     generate_grid.onclick = e => {
-        if (web_state != STATE_IDLE) return;
+        if (web_state != STATE_IDLE && web_state != STATE_PLAY) return;
         if (!columns_num.validity.valid || !rows_num.validity.valid) {
             flash_message(FLASH_ERROR, "Number of Rows and Column should be limited from 1 to 100");
             return;
@@ -401,6 +402,8 @@ async function init() {
             flash_message(FLASH_ERROR, 'Calculate Probability must first be used to upload the board properly.', 5000);
             return;
         }
+        const err_slice_ptr = WasmExports.CheckCurrentBoard(parseInt(gm_count.value), include_flags.checked);
+        output_any_error(err_slice_ptr);
     };
     play_current_board.onclick = show_play_current_board_f;
     close_play_body.onclick = e => {
@@ -414,11 +417,12 @@ async function init() {
                 play_board_data.value = '';
                 play_obj.init_create_board_empty(BigInt(Date.now()));
             } else {
-                play_obj.init_create_board_preset_seed('30x16, m=4440304080802002029118008000c081210180d8002082000410428e4240310410403820250901408c079d000460000e0828088252c20c8245029000. l=0b0000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000. r=040000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000.');
+                play_obj.init_create_custom_board_seed(play_board_data.value);
             }
 
         }
     };
+    play_new_game_with_board.onclick = e => play_obj.init_create_preset(e);
     play_sandbox.onchange = e => flash_message(FLASH_SUCCESS, 'Sandbox mode enables continuing playing the game after hitting a mine. It also shows wrong flags after clicking a mine if any.', 5000);
     play_seed_manual.onchange = play_seed_manual_f;
     play_seed_manual_f();
@@ -497,7 +501,7 @@ function show_play_current_board_f(e) {
     }
 }
 function show_config_window_f(e) {
-    if (web_state != STATE_IDLE) return;
+    if (web_state == STATE_UPLOAD) return;
     config.classList.remove('window-hide');
     show_config_window.classList.add('tab-selected');
     drag_window_f(config, parseInt(config.dataset.left), parseInt(config.dataset.top));
@@ -1880,6 +1884,7 @@ let play_timer;
 let play_seed;
 let play_status;
 let play_new_game;
+let play_new_game_with_board;
 let play_seed_manual;
 let play_sandbox;
 class Play {
@@ -1889,6 +1894,7 @@ class Play {
     static STATE_PLAYING = 3;
     static STATE_YOU_LOSE = 4;
     static STATE_YOU_WIN = 5;
+    static STATE_WASM_ERROR = 6;
     static DIR_U = 0;
     static DIR_UR = 1;
     static DIR_R = 2;
@@ -2010,6 +2016,7 @@ class Play {
         const ms_type = parseInt(this_div.dataset.ms_type);
         switch (ms_type) {
             case MsType.unknown:
+            case MsType.flagwrong:
                 if (this_div.dataset.has_mine === 'y') {
                     if (!play_sandbox.checked)
                         this.lost_game(this_i);
@@ -2084,7 +2091,11 @@ class Play {
         return true;
     }
     start_play(this_i) {
-        WasmExports.MinesweeperInitEmpty(this.num_mines, this.width, this.height, this_i);
+        const err_slice_ptr = WasmExports.MinesweeperInitEmpty(this.num_mines, this.width, this.height, this_i);
+        if (output_any_error(err_slice_ptr)) {
+            this.state = Play.STATE_WASM_ERROR;
+            return;
+        }
         const seed_ptr = WasmExports.GetMineSeed();
         const mbdv = new DataView(WasmMemory.buffer, seed_ptr, StringSlice.$size);
         const mine_ptr = mbdv.getUint32(StringSlice.ptr.offset, true);
@@ -2147,20 +2158,24 @@ class Play {
         switch (this.state) {
             case Play.STATE_BEGIN_CUSTOM:
                 {
-                    if (!this.start_custom()) {
+                    if (this.start_custom()) {
                         const lc_board_ptr = WasmExports.GetLeftClickBoard();
                         const lcbdv = new DataView(WasmMemory.buffer, lc_board_ptr, StringSlice.$size);
                         const lcb_len = lcbdv.getUint32(StringSlice.len.offset, true);
-                        if (lcb_len != 0) //Don't activate first click tile if l parameter was set
+                        if (lcb_len == 0) {
+                            //Don't activate first click tile if l parameter was set
                             if (this.click_tile(this_i, true))
                                 if (this.found_all_mine_tiles())
                                     this.won_game();
+                        } else
+                            this.state = Play.STATE_PLAYING;
                     }
                 }
                 break;
             case Play.STATE_BEGIN_PLAY:
                 {
                     this.start_play(this_i);
+                    if (this.state == Play.STATE_WASM_ERROR) break;
                     if (this.click_tile(this_i, true))
                         if (this.found_all_mine_tiles())
                             this.won_game();
@@ -2210,6 +2225,7 @@ class Play {
                 break;
             case Play.STATE_BEGIN_PLAY:
                 this.start_play(this_i);
+                if (this.state == Play.STATE_WASM_ERROR) break;
                 this.toggle_flag(this_i);
                 if (this.found_all_mine_tiles())
                     this.won_game();
@@ -2316,7 +2332,34 @@ class Play {
         this.state = use_state;
         play_status.value = '';
     }
-    init_create_board_preset_seed(seed_str) {
+    init_create_preset(e) {
+        if(!WasmExports.HasUploaded()){
+            flash_message(FLASH_ERROR, 'A Board has not been uploaded with Upload Current Board.', 5000);
+            this.state = Play.STATE_WASM_ERROR;
+            return;
+        }
+        const err_slice_ptr = WasmExports.MinesweeperInitBoard(parseInt(gm_count.value), include_flags.checked);
+        if (output_any_error(err_slice_ptr)) {
+            this.state = Play.STATE_WASM_ERROR;
+            return;
+        }
+        const seed_ptr = WasmExports.GetMineSeed();
+        const mbdv = new DataView(WasmMemory.buffer, seed_ptr, StringSlice.$size);
+        const mine_ptr = mbdv.getUint32(StringSlice.ptr.offset, true);
+        const mine_len = mbdv.getUint32(StringSlice.len.offset, true);
+        play_board_data.value = copy_shared(mine_ptr, mine_len);
+        this.init_create_board(WasmExports.ParsedWidth(), WasmExports.ParsedHeight(), WasmExports.ParsedNumMines());
+        this.reset_board(Play.STATE_BEGIN_CUSTOM);
+        const lc_board_ptr = WasmExports.GetLeftClickBoard();
+        const rc_board_ptr = WasmExports.GetRightClickBoard();
+        const lcbdv = new DataView(WasmMemory.buffer, lc_board_ptr, StringSlice.$size);
+        const rcbdv = new DataView(WasmMemory.buffer, rc_board_ptr, StringSlice.$size);
+        const lcb_len = lcbdv.getUint32(StringSlice.len.offset, true);
+        const rcb_len = rcbdv.getUint32(StringSlice.len.offset, true);
+        if (lcb_len != 0 || rcb_len != 0)
+            flash_message(FLASH_SUCCESS, 'l or m parameter has been set. Your first click will be ignored.', 5000);
+    }
+    init_create_custom_board_seed(seed_str) {
         const seed_te = TE.encode(seed_str);
         const len = seed_te.byteLength;
         const alloc_ptr = WasmExports.WasmAlloc(len);
@@ -2324,14 +2367,7 @@ class Play {
         mem_view.set(seed_te, 0);
         const err_slice_ptr = WasmExports.ParseMineSeed(alloc_ptr, len);
         WasmExports.WasmFree(alloc_ptr);
-        if (err_slice_ptr !== 0) {
-            const err_msg_dv = new DataView(WasmMemory.buffer, err_slice_ptr, StringSlice.$size);
-            const err_msg_ptr = err_msg_dv.getUint32(StringSlice.ptr.offset, true);
-            const err_msg_len = err_msg_dv.getUint32(StringSlice.len.offset, true);
-            flash_message(FLASH_ERROR, copy_shared(err_msg_ptr, err_msg_len));
-            WasmExports.WasmFree(err_msg_ptr);
-            return;
-        }
+        if (output_any_error(err_slice_ptr)) return;
         play_board.style.setProperty('--num-columns', WasmExports.ParsedWidth());
         this.init_create_board(WasmExports.ParsedWidth(), WasmExports.ParsedHeight(), WasmExports.ParsedNumMines());
         this.reset_board(Play.STATE_BEGIN_CUSTOM);
@@ -2361,4 +2397,15 @@ function copy_shared(addr, len) {
     const copy_ab_view = new Uint8Array(copy_ab);
     copy_ab_view.set(buffer_view, 0);
     return TD.decode(copy_ab_view);
+}
+function output_any_error(err_slice_ptr) {
+    if (err_slice_ptr !== 0) {
+        const err_msg_dv = new DataView(WasmMemory.buffer, err_slice_ptr, StringSlice.$size);
+        const err_msg_ptr = err_msg_dv.getUint32(StringSlice.ptr.offset, true);
+        const err_msg_len = err_msg_dv.getUint32(StringSlice.len.offset, true);
+        flash_message(FLASH_ERROR, copy_shared(err_msg_ptr, err_msg_len));
+        WasmExports.WasmFree(err_msg_ptr);
+        return true;
+    }
+    return false;
 }
