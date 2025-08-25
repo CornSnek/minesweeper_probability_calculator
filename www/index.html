@@ -29,7 +29,13 @@
       </div>
       <div class="play-element">
         <button type="button" id="play-upload-current-board">Upload Current Board</button>
-        <label for="play-sandbox">Sandbox Mode</label><input type="checkbox" id="play-sandbox">
+        <button type="button" id="play-copy-board">Copy Board</button>
+        <label for="play-gamemode">Game Mode</label>
+        <select id="play-gamemode">
+          <option value="Standard">Standard</option>
+          <option value="Sandbox">Sandbox</option>
+          <option value="Probability">Probability</option>
+        </select>
         <label for="play-seed">Random Seed</label> <input id="play-seed" type="number" value="0" step="1" disabled>
         <label for="play-seed-manual">Manual Seed</label>
         <input type="checkbox" id="play-seed-manual">
@@ -44,7 +50,7 @@
         <output id="play-status"></output>
       </div>
       <div id="play-board-container" class="play-element no-highlight">
-        <div id="play-board" class="tile-template" style="--size-tile: 20px; --size-image: 15px;">
+        <div id="play-board" class="tile-template" style="--size-tile: 20px; --size-image: 15px; row-gap: 0; column-gap: 2px;">
         </div>
       </div>
     </div>
@@ -410,12 +416,15 @@
         </div>
         <h3>Global Probability (Non-Adjacent Tiles)</h3>
         <div>
-          To get the probability for a non-adjacent tile, we consider the weight for each number of leftover mines, where the weight is \( MF_G(m) \), and the number of combinations of leftover mines.
-          The number of combinations of leftover mines is described below.
+          To get the probability for a non-adjacent tile, we consider the same denominator as the global probability for adjacent tiles, which is \( MF_G(m) \) times the number of combinations of leftover mines as described below.
           \[
-            \displaystyle \sum_{ m \in S_{M_G} } \binom{U_{NA}}{M_G - m}
+            \displaystyle \sum_{ m \in S_{M_G} } MF_G(m) \cdot \binom{U_{NA}}{M_G - m}
           \]
-          To check the number of combinations for a tile that has a mine, let's check some mine combinations again for \( m = 2 \) and \( M_G = 4 \), but only considering the top-left tile (marked as a flag).
+          To get the numerator count of which combinations are mines, let's first consider number of combinations of leftover mines described below.
+          \[
+            \binom{U_{NA}}{M_G - m}
+          \]
+          To check the number of combinations for a tile that has a mine, let's check some mine combinations again for \( m = 2 \) and \( M_G = 4 \), but only considering the top-left tile (marked as a flag). We will use this to get the number to multiply as the numerator for each sets of mines \( m \) starting with \( m = 2 \) below:
           <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 1rem;">
             <div class="tile-template" data-ncolumns="5" data-str="fvccc,ccccc"></div>
             <div class="tile-template" data-ncolumns="5" data-str="fcvcc,ccccc"></div>
@@ -440,27 +449,13 @@
           Let's also check \( m = 1 \). Using the formula, there are  \( \binom{U_{NA}}{M_G - m} = \binom{10}{3} = 120 \text{ combinations}\) and \( \binom{U_{NA} - 1}{M_G - m - 1} = \binom{9}{2} = 36 \text{ combinations that have a mine in any tile.}\)
           <br>
           <br>
-          The probability of a non-adjacent tile is a mine would be the following with simplifications:
-          \[
-            \begin{aligned}
-              \frac{ \binom{U_{NA}-1}{M_G-m-1} }{ \binom{U_{NA}}{M_G-m} } &= \frac{ \binom{a-1}{b-1} }{ \binom{a}{b} }
-              \text{, } a=U_NA \text{, } b=M_G-m \\
-              &= \frac{ \frac{ (a-1)! }{ (b-1)!(a-1-b+1)! } }{ \frac{ a! }{ b!(a-b)! } } \\
-              &= \frac{ \frac{ (a-1)! }{ (b-1)!(a-b)! } }{ \frac{ a \cdot (a-1)! }{ b \cdot (b-1)!(a-b)! } } \\
-              &= \frac{ 1 }{ \frac{a}{b} } \\
-              &= \frac{ b }{ a } \\
-              &= \frac{ M_G - m }{ U_{NA} } \\
-            \end{aligned}
-          \]
-          We need to also multiply the weight of each mine combination, where the numerator is the number of solutions per mines, or \( MF_G(m) \). The denominator of the weight would be the sum of all \( MF_G(m) \)
-          <br><br>
           Thus, the formula of global probability for non-adjacent tiles is the following.
           \[
-            \text{GlobalProbability}_{NA} = 
+            \text{GlobalProbability}_{NA} =
             \frac{
-              \displaystyle \sum_{ m \in S_{M_G} } (M_G-m) \cdot MF_G(m)
+              \displaystyle \sum_{ m \in S_{M_G} } MF_G(m) \cdot \binom{U_{NA} - 1}{M_G - m - 1}
             }{
-              U_{NA} \cdot ( \displaystyle \sum_{ m' \in S_{M_G} } MF_G(m') )
+              \displaystyle \sum_{ m \in S_{M_G} } MF_G(m) \cdot \binom{U_{NA}}{M_G - m}
             }
           \]
         </div>
@@ -491,9 +486,9 @@
           \[
             \text{GlobalProbability}_{NA} = 
             \frac{
-              \displaystyle \sum_{ m \in S_{M_G} \text{ | } m \le M_G \text{ and } M_G \le m + U_{NA} } (M_G-m) \cdot MF_G(m)
+              \displaystyle \sum_{ m \in S_{M_G} \text{ | } m \le M_G \text{ and } M_G \le m + U_{NA} } MF_G(m) \cdot \binom{U_{NA} - 1}{M_G - m - 1}
             }{
-              U_{NA} \left( \displaystyle \sum_{ m' \in S_{M_G} \text{ | } m' \le M_G \text{ and } M_G \le m' + U_{NA} } MF_G(m') \right)
+              \displaystyle \sum_{ m \in S_{M_G} \text{ | } m \le M_G \text{ and } M_G \le m + U_{NA} } MF_G(m) \cdot \binom{U_{NA}}{M_G - m}
             }
           \]
           Note, that if the global mine count is less than all known solution mine numbers, then the program will throw an error of 'Too little mines!'.

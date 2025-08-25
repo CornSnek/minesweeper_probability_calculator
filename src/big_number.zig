@@ -7,6 +7,21 @@ pub const BigUInt = struct {
         try bytes.append(allocator, init_num);
         return .{ .bytes = bytes };
     }
+    pub fn init_random(allocator: std.mem.Allocator, random: std.Random, max: BigUInt) !BigUInt {
+        var result: BigUInt = try init(allocator, 0);
+        errdefer result.deinit(allocator);
+        try result.pad(allocator, max.bytes.items.len);
+        while (true) {
+            for (result.bytes.items) |*b|
+                b.* = random.int(u32); //Always randomize all bytes when the last byte + max bits is too big as storing bytes causes bias.
+            const last_byte_bits: u6 = 32 - @clz(max.bytes.items[max.bytes.items.len - 1]);
+            if (last_byte_bits < 32) {
+                const mask: u32 = (@as(u32, 1) << @as(u5, @truncate(last_byte_bits))) - 1;
+                result.bytes.items[max.bytes.items.len - 1] &= mask;
+            }
+            if (result.bytes.getLast() < max.bytes.getLast()) return result;
+        }
+    }
     pub fn clone(self: BigUInt, allocator: std.mem.Allocator) !BigUInt {
         return .{ .bytes = try self.bytes.clone(allocator) };
     }
@@ -45,6 +60,18 @@ pub const BigUInt = struct {
         }
         if (carry != 0)
             try self.bytes.append(allocator, carry);
+    }
+    ///Returns remainder
+    pub fn divide_byte(self: *BigUInt, by: u32) u32 {
+        std.debug.assert(by != 0);
+        var rem: u64 = 0;
+        for (0..self.bytes.items.len) |i| {
+            const rev_i = self.bytes.items.len - 1 - i;
+            const combined: u64 = (rem << 32) | @as(u64, self.bytes.items[rev_i]);
+            self.bytes.items[rev_i] = @truncate(combined / by);
+            rem = combined % by;
+        }
+        return @truncate(rem);
     }
     ///Switch back and forth in adding/multiplying
     const MultiplyResult = union(enum) {
@@ -92,7 +119,10 @@ pub const BigUInt = struct {
             }
         }
         switch (mr) {
-            .init => |*bui| bui.deinit(allocator),
+            .init => |*bui| {
+                self.deinit(allocator);
+                self.bytes = bui.bytes;
+            },
             .sum_first => |*bui_arr| {
                 try bui_arr[0].add(allocator, bui_arr[1]);
                 bui_arr[1].deinit(allocator);
@@ -190,19 +220,30 @@ pub const BigUInt = struct {
         self.bytes.deinit(allocator);
     }
 };
-const t_allocator = std.testing.allocator;
+pub fn bui_comb(allocator: std.mem.Allocator, n: u32, r: u32) !BigUInt {
+    if (r > n) {
+        return .init(allocator, 0);
+    }
+    const k = @min(r, n - r);
+    var bui: BigUInt = try .init(allocator, 1);
+    errdefer bui.deinit(allocator);
+    var m: u32 = 1;
+    while (m < k + 1) : (m += 1) {
+        try bui.multiply_byte(allocator, n - k + m);
+        _ = bui.divide_byte(m);
+    }
+    bui.trim();
+    return bui;
+}
 test "BigUInt" {
-    var bui: BigUInt = try .init(t_allocator, 100);
+    const t_allocator = std.testing.allocator;
+    var bui = try bui_comb(t_allocator, 1234, 15);
     defer bui.deinit(t_allocator);
-    try bui.multiply_byte(t_allocator, 255);
-    try bui.multiply_byte(t_allocator, 255);
-    try bui.multiply_byte(t_allocator, 255);
-    try bui.multiply_byte(t_allocator, 255);
-    try bui.multiply_byte(t_allocator, 255);
-    try bui.multiply_byte(t_allocator, 255);
-    try bui.multiply_byte(t_allocator, 255);
-    var bui2: BigUInt = try .init(t_allocator, 100);
-    defer bui2.deinit(t_allocator);
-    try bui2.multiply_byte(t_allocator, 255);
-    std.debug.print("{} {d} {}\n", .{ bui.order(bui2), bui.to_float(f64), bui.pop_count() });
+    var prng = std.Random.DefaultPrng.init(@bitCast(std.time.milliTimestamp()));
+    std.debug.print("bui: {}\n", .{bui.to_float(f32)});
+    for (0..100) |_| {
+        var bui2: BigUInt = try .init_random(t_allocator, prng.random(), bui);
+        defer bui2.deinit(t_allocator);
+        std.debug.print("random: {}\n", .{bui2.to_float(f32)});
+    }
 }

@@ -60,10 +60,18 @@ pub const CalculateArray = extern struct {
             allocator.free(self_slice);
         }
     }
+    pub fn slice(self: CalculateArray) []Calculate {
+        return self.ptr[0..self.len];
+    }
 };
 pub const TestTypeInfo = @import("print_wasm32_info.zig").TestTypeInfo;
 pub const StringSlice = extern struct {
-    ptr: [*c]const u8,
+    ptr: [*c]u8,
     len: usize,
     pub const empty: StringSlice = .{ .ptr = 0, .len = 0 };
+};
+pub const PlayProbabilityStatus = enum(i32) {
+    idle,
+    running,
+    cancel,
 };

@@ -320,6 +320,9 @@ pub const TileMap = struct {
         ptr: [*c]TileLocation,
         len: usize,
         pub const empty: IDToLocationExtern = .{ .ptr = 0, .len = 0 };
+        pub fn slice(self: IDToLocationExtern) []TileLocation {
+            return self.ptr[0..self.len];
+        }
     };
     ///Insert uniques only and returns id of the tile.
     pub fn insert(self: *TileMap, allocator: std.mem.Allocator, tl: TileLocation) !usize {
@@ -361,6 +364,9 @@ pub const SolutionBits = struct {
         len: usize,
         number_bytes: u32,
         pub const empty: SolutionBitsExtern = .{ .ptr = 0, .len = 0, .number_bytes = 0 };
+        pub fn slice(self: SolutionBitsExtern) []u32 {
+            return self.ptr[0..self.len];
+        }
     };
     pub fn get_solution_bits_extern(self: SolutionBits) SolutionBitsExtern {
         return .{ .ptr = self.data.items.ptr, .len = self.data.items.len, .number_bytes = self.number_bytes };
@@ -369,7 +375,7 @@ pub const SolutionBits = struct {
         std.debug.assert(i * self.number_bytes < self.data.items.len);
         const adj_i: usize = i * self.number_bytes;
         for (self.metadata.items) |sbr|
-            if (adj_i >= sbr.begin and adj_i <= sbr.end)
+            if (adj_i >= sbr.begin and adj_i < sbr.end)
                 return sbr.pc;
         @panic("Shouldn't reach here");
     }
@@ -445,6 +451,9 @@ pub const MinesweeperMatrix = struct {
         pub fn deinit(self: LocationCount, allocator: std.mem.Allocator) void {
             allocator.free(self.mf_ptr[0..self.mf_len]);
         }
+        pub fn slice(self: LocationCount) []MineFrequency {
+            return self.mf_ptr[0..self.mf_len];
+        }
     };
     pub const MineFrequency = extern struct {
         m: usize,
@@ -458,6 +467,27 @@ pub const MinesweeperMatrix = struct {
             }
         };
     };
+    pub const MineFrequencyConvolute = struct {
+        mds: std.ArrayListUnmanaged(usize), //usize is the index of the MineFrequency
+        m: usize,
+        f: big_number.BigUInt,
+        pub fn init(allocator: std.mem.Allocator) !MineFrequencyConvolute {
+            return .{
+                .mds = .empty,
+                .m = 0,
+                .f = try .init(allocator, 1),
+            };
+        }
+        pub fn convolute(self: *MineFrequencyConvolute, allocator: std.mem.Allocator, mf: MineFrequency, conv_md: usize) !void {
+            self.m += mf.m;
+            try self.f.multiply_byte(allocator, @truncate(mf.f));
+            try self.mds.append(allocator, conv_md);
+        }
+        pub fn deinit(self: *MineFrequencyConvolute, allocator: std.mem.Allocator) void {
+            self.mds.deinit(allocator);
+            self.f.deinit(allocator);
+        }
+    };
     pub const MineFrequencyMap = sorted_list.SortedList(MineFrequency, MineFrequency.Context);
     pub const ProbabilityList = extern struct {
         total: usize,
@@ -466,6 +496,12 @@ pub const MinesweeperMatrix = struct {
         lc_ptr: [*c]LocationCount,
         lc_len: usize,
         pub const empty: ProbabilityList = .{ .total = 0, .lc_ptr = 0, .lc_len = 0, .mf_ptr = 0, .mf_len = 0 };
+        pub fn mf_slice(self: ProbabilityList) []MineFrequency {
+            return self.mf_ptr[0..self.mf_len];
+        }
+        pub fn lc_slice(self: ProbabilityList) []LocationCount {
+            return self.lc_ptr[0..self.lc_len];
+        }
         pub fn init(
             allocator: std.mem.Allocator,
             total: usize,
@@ -742,7 +778,7 @@ pub const MinesweeperMatrix = struct {
             try bui_free_max.pad(allocator, (total_free_count + 31) / 32);
             try bui_free_counter.pad(allocator, (total_free_count + 31) / 32);
             bui_free_max.set(total_free_count);
-            self.sb.number_bytes = (self.tm.idtol.items.len + 31) / 32;
+            self.sb.number_bytes = @truncate((self.tm.idtol.items.len + 31) / 32);
             var total: usize = 0;
             while (bui_free_counter.order(bui_free_max) != .eq) : (try bui_free_counter.add_one(allocator)) {
                 if (UsingWasm) {

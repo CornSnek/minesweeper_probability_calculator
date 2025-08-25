@@ -8,18 +8,17 @@ pub const std_options: std.Options = .{
     .logFn = logger.std_options_impl.logFn,
 };
 pub const panic = std.debug.FullPanic(wasm_print.panic);
+var t1_stack: [65536]u8 align(16) = undefined;
+var t2_stack: [65536]u8 align(16) = undefined;
+export fn T1StackTop() [*c]u8 {
+    return &t1_stack[t1_stack.len - 16];
+}
+export fn T2StackTop() [*c]u8 {
+    return &t2_stack[t2_stack.len - 16];
+}
 comptime {
-    const jsalloc = @import("wasm_jsalloc.zig");
-    std.mem.doNotOptimizeAway(jsalloc.WasmAlloc);
-    std.mem.doNotOptimizeAway(jsalloc.WasmFree);
-    std.mem.doNotOptimizeAway(jsalloc.WasmFreeAll);
-    std.mem.doNotOptimizeAway(jsalloc.WasmListAllocs);
-    const rng = @import("rng.zig");
-    std.mem.doNotOptimizeAway(rng.InitRNGSeed);
-    std.mem.doNotOptimizeAway(rng.MinesweeperInitEmpty);
-    std.mem.doNotOptimizeAway(rng.ParsedWidth);
-    std.mem.doNotOptimizeAway(rng.ParsedHeight);
-    std.mem.doNotOptimizeAway(rng.ParsedNumMines);
+    _ = @import("wasm_jsalloc.zig");
+    _ = @import("rng.zig");
 }
 pub const CalculatedMap = struct {
     map_parser: ?minesweeper.MapParser,
@@ -77,6 +76,7 @@ pub const CalculatedMap = struct {
 pub var cm: CalculatedMap = .empty;
 export fn CreateGrid(width: usize, height: usize) void {
     cm.deinit_mp(wasm_allocator);
+    std.log.debug("{*} {*}", .{ T1StackTop(), T2StackTop() });
     const mp_status = minesweeper.MapParser.init(wasm_allocator, width, height);
     if (mp_status == .ok) {
         cm.map_parser = mp_status.ok;
@@ -143,7 +143,7 @@ fn stringify_matrix(
                 continue;
             } else {
                 if (n.v != 1) try results.writer(allocator).print("{}", .{n.v});
-                try results.writer(allocator).print("x_{{{?}}}", .{n.id});
+                try results.writer(allocator).print("x_{{{any}}}", .{n.id});
             }
             next = n.next;
         }
@@ -156,7 +156,7 @@ fn stringify_matrix(
                 if (@abs(n.v) != 1) {
                     try results.writer(allocator).print("{}", .{@abs(n.v)});
                 }
-                try results.writer(allocator).print("x_{{{?}}}", .{n.id});
+                try results.writer(allocator).print("x_{{{any}}}", .{n.id});
             }
             next = n.next;
         }
@@ -165,7 +165,7 @@ fn stringify_matrix(
         if (mm.tm.idtol.items.len != 0)
             try results.writer(allocator).writeAll("Where \\(");
         for (mm.tm.idtol.items, 0..) |loc, id| {
-            try results.writer(allocator).print("x_{{{?}}}=\\langle{},{}\\rangle,\\,", .{ id, loc.x, loc.y });
+            try results.writer(allocator).print("x_{{{any}}}=\\langle{},{}\\rangle,\\,", .{ id, loc.x, loc.y });
         }
         if (mm.tm.idtol.items.len != 0) {
             try results.writer(allocator).writeAll("\\)<br>");

@@ -1,8 +1,13 @@
 const std = @import("std");
-const wasm_allocator = @import("root").wasm_allocator;
-const CalculatedMap = @import("root").CalculatedMap;
+const root = @import("root");
+const wasm_allocator = root.wasm_allocator;
+const CalculatedMap = root.CalculatedMap;
 const wasm_jsalloc = @import("wasm_jsalloc.zig");
 const StringSlice = @import("shared.zig").StringSlice;
+const big_number = @import("big_number.zig");
+const SolutionBitsRange = @import("minesweeper.zig").SolutionBits.SolutionBitsRange;
+const MineFrequencyConvolute = @import("minesweeper.zig").MinesweeperMatrix.MineFrequencyConvolute;
+const PlayProbabilityStatus = @import("shared.zig").PlayProbabilityStatus;
 var error_slice: StringSlice = .empty;
 fn add_error_slice(err_msg: []u8) void {
     wasm_jsalloc.slice_to_js(err_msg) catch {
@@ -12,9 +17,9 @@ fn add_error_slice(err_msg: []u8) void {
     error_slice = .{ .len = err_msg.len, .ptr = err_msg.ptr };
 }
 var cm: CalculatedMap = .empty;
-var prng: std.Random.Xoshiro256 = .init(0);
+var prng: std.Random.Pcg = .init(0);
 pub export fn InitRNGSeed(seed: u64) void {
-    prng.seed(seed);
+    prng = .init(seed);
 }
 var mine_board: std.ArrayListUnmanaged(u8) = .{};
 var mine_board_ext: StringSlice = undefined;
@@ -64,18 +69,10 @@ pub export fn MinesweeperInitEmpty(num_mines: u32, width: u32, height: u32, safe
     clear_board();
     if (wtimesh != num_mines) {
         mine_board.appendNTimes(wasm_allocator, 0, (wtimesh + 7) / 8) catch allocation_error();
-        var mines_left: u32 = num_mines;
-        while (mines_left != 0) {
-            const add_i = prng.random().uintLessThan(usize, wtimesh);
-            const byte_i = add_i / 8;
-            const bit_i: u3 = @truncate(add_i % 8);
-            const mask: u8 = (@as(u8, 1) << bit_i);
-            if (mine_board.items[byte_i] & mask == 0) {
-                if (wtimesh != 1 and safe_click == add_i) continue;
-                mine_board.items[byte_i] |= mask;
-                mines_left -= 1;
-            }
-        }
+        var random_list = mine_tiles_random(wasm_allocator, prng.random(), .{ .mineboard = safe_click }, num_mines, width, height) catch allocation_error();
+        defer random_list.deinit(wasm_allocator);
+        for (random_list.items) |bb|
+            mine_board.items[bb.byte] |= bb.bit;
     } else {
         mine_board.appendNTimes(wasm_allocator, std.math.maxInt(u8), (wtimesh + 7) / 8) catch allocation_error();
     }
@@ -296,7 +293,7 @@ fn nth_lower_bits_mask(n: u3) u8 {
     return (@as(u8, 1) << n) -% 1;
 }
 export fn UploadCurrentBoard() bool {
-    const root_cm: *CalculatedMap = &@import("root").cm;
+    const root_cm: *CalculatedMap = &root.cm;
     return cm.move(root_cm, wasm_allocator) catch allocation_error();
 }
 pub const BoardData = struct {
@@ -420,10 +417,58 @@ const ByteBit = struct {
         return .{ .byte = i / 8, .bit = @as(u8, 1) << @truncate(i & 0b111) };
     }
 };
-fn minesweeper_init_board(global_mine_count: isize, include_mine_flags: bool) ![*c]StringSlice {
-    std.debug.assert(cm.is_probability_calculated());
-    clear_board();
-    const bd = get_board_data(global_mine_count, include_mine_flags) orelse return &error_slice;
+pub const MineTilesFilter = union(enum) {
+    ///Represents the safe click tile (Don't add any mines here)
+    mineboard: usize,
+    all: void,
+};
+fn next_empty(filter_type: MineTilesFilter, tile_ptr: *usize, width: usize, height: usize) ?ByteBit {
+    if (tile_ptr.* == width * height) return null;
+    var bb: ByteBit = undefined;
+    if (filter_type == .mineboard) {
+        if (tile_ptr.* == filter_type.mineboard) {
+            tile_ptr.* += 1;
+            if (tile_ptr.* == width * height) return null;
+        }
+        bb = .init_i(tile_ptr.*);
+    } else {
+        bb = .init_i(tile_ptr.*);
+        while (left_click_board.items[bb.byte] & bb.bit != 0 or right_click_board.items[bb.byte] & bb.bit != 0) {
+            tile_ptr.* += 1;
+            if (tile_ptr.* == width * height) return null;
+            bb = .init_i(tile_ptr.*);
+        }
+    }
+    return bb;
+}
+///Using reservoir sampling algorithm to uniformly add mines.
+fn mine_tiles_random(
+    allocator: std.mem.Allocator,
+    random: std.Random,
+    filter_type: MineTilesFilter,
+    num_mines: usize,
+    width: usize,
+    height: usize,
+) !std.ArrayListUnmanaged(ByteBit) {
+    var tile_ptr: usize = 0;
+    var random_list: std.ArrayListUnmanaged(ByteBit) = .empty;
+    errdefer random_list.deinit(allocator);
+    try random_list.ensureTotalCapacityPrecise(allocator, num_mines);
+    random_list.items.len = num_mines;
+    for (0..num_mines) |i| { //Fill list with empty tiles.
+        random_list.items[i] = next_empty(filter_type, &tile_ptr, width, height).?;
+        tile_ptr += 1;
+    }
+    var count: usize = num_mines;
+    while (next_empty(filter_type, &tile_ptr, width, height)) |bb| {
+        const i = random.intRangeAtMost(usize, 0, count);
+        if (i < num_mines) random_list.items[i] = bb;
+        tile_ptr += 1;
+        count += 1;
+    }
+    return random_list;
+}
+fn create_preset_board(bd: BoardData) !void {
     const board_size: u32 = (@as(u32, @truncate(cm.map_parser.?.map.items.len)) + 7) / 8;
     try mine_board.appendNTimes(wasm_allocator, 0, board_size);
     try left_click_board.appendNTimes(wasm_allocator, 0, board_size);
@@ -437,26 +482,89 @@ fn minesweeper_init_board(global_mine_count: isize, include_mine_flags: bool) ![
             right_click_board.items[bb.byte] |= bb.bit;
             mine_board.items[bb.byte] |= bb.bit; //Mine in flag
         }
-        if (ms_type.is_number())
+        if (ms_type.is_number() or ms_type == .donotcare)
             left_click_board.items[bb.byte] |= bb.bit;
     }
     var mines_left = bd.adj_mine_count;
     var i_array: std.ArrayListUnmanaged(usize) = .empty;
     defer i_array.deinit(wasm_allocator);
-    while (true) {
-        i_array.clearRetainingCapacity();
-        var total_number_mines: usize = 0;
-        for (cm.mm_subsystems) |*mms| {
-            const len_solutions = mms.sb.data.items.len / mms.sb.number_bytes;
-            const random_i = prng.random().uintLessThan(usize, len_solutions);
-            total_number_mines += mms.sb.get_popcount(random_i);
-            try i_array.append(wasm_allocator, random_i);
-        }
-        if (mines_left < total_number_mines) continue; //Only use valid mine count solutions within ranges.
-        if (mines_left - bd.non_adjacent_tiles > total_number_mines) continue;
-        mines_left -= @bitCast(total_number_mines);
-        break;
+    const ss_len = cm.mm_subsystems.len;
+    //Index of conv_ctr is SubSystem index, and .c is MineFrequency index (.m is maximum per SubSystem).
+    var conv_ctr: std.ArrayListUnmanaged(struct { c: usize = 0, m: usize }) = .empty;
+    defer conv_ctr.deinit(wasm_allocator);
+    for (0..ss_len) |ss_i| {
+        const calc = &cm.calculate_array.ptr[ss_i];
+        const mf_len = calc.pl.mf_len;
+        try conv_ctr.append(wasm_allocator, .{ .m = mf_len });
     }
+    var mfcs: std.ArrayListUnmanaged(MineFrequencyConvolute) = .empty;
+    defer {
+        for (mfcs.items) |*m|
+            m.deinit(wasm_allocator);
+        mfcs.deinit(wasm_allocator);
+    }
+    //Get the formula for "Math Explanation > Convolution to Calculate Mine Count and Frequencies of the Whole Board"
+    //The weight for each individual convoluted .m and .f is considered.
+    while (true) : ({
+        //Increment counters until 0 is reached for all
+        for (0..conv_ctr.items.len) |ctr_i| {
+            conv_ctr.items[ctr_i].c += 1;
+            if (conv_ctr.items[ctr_i].c == conv_ctr.items[ctr_i].m) {
+                conv_ctr.items[ctr_i].c = 0;
+                continue;
+            }
+            break;
+        } else break;
+    }) {
+        var mfc: MineFrequencyConvolute = try .init(wasm_allocator);
+        errdefer mfc.deinit(wasm_allocator);
+        for (0..conv_ctr.items.len) |ss_i| {
+            const mf_i = conv_ctr.items[ss_i].c;
+            const mf = cm.calculate_array.slice()[ss_i].pl.mf_slice()[mf_i];
+            try mfc.convolute(wasm_allocator, mf, mf_i);
+        }
+        //Only use valid mine count solutions within ranges.
+        if (mines_left < mfc.m) { //Exclude too little .m
+            mfc.deinit(wasm_allocator);
+            continue;
+        }
+        if (mines_left - bd.non_adjacent_tiles > mfc.m) { //Exclude too many leftover .m mines
+            mfc.deinit(wasm_allocator);
+            continue;
+        }
+        const g_min_m: u32 = @truncate(@as(usize, @bitCast(bd.adj_mine_count)) - mfc.m);
+        var bui_comb = try big_number.bui_comb(
+            wasm_allocator,
+            @truncate(@as(usize, @bitCast(bd.non_adjacent_tiles))),
+            g_min_m,
+        ); //Multiply convoluted f with comb(unknown_non-adjacent_tiles, mine_count - mfc.m)
+        errdefer bui_comb.deinit(wasm_allocator);
+        try mfc.f.multiply(wasm_allocator, bui_comb);
+        try mfcs.append(wasm_allocator, mfc);
+    }
+    for (0..mfcs.items.len) |j| { //Make as running total to get a big number unsigned integer [0,running total).
+        const rev_i = mfcs.items.len - 1 - j;
+        const last_f = &mfcs.items[rev_i].f;
+        for (0..rev_i) |k|
+            try last_f.add(wasm_allocator, mfcs.items[k].f);
+    }
+    //for (mfcs.items) |*mfc| {
+    //std.log.warn("{any}\n", .{mfc.f.bytes.items});
+    //}
+    var mfc_f_random: big_number.BigUInt = try .init_random(wasm_allocator, prng.random(), mfcs.getLast().f);
+    defer mfc_f_random.deinit(wasm_allocator);
+    var chosen_mfc: usize = 0;
+    while (mfc_f_random.order(mfcs.items[chosen_mfc].f) != .lt) : (chosen_mfc += 1) {}
+    //std.log.warn("{} {any}\n", .{ chosen_mfc, mfc_f_random.bytes });
+    const chosen_mds = mfcs.items[chosen_mfc].mds.items;
+    mines_left -= @bitCast(mfcs.items[chosen_mfc].m);
+    for (0.., chosen_mds) |ss_i, mf_i| {
+        const sbr = cm.mm_subsystems[ss_i].sb.metadata.items[mf_i];
+        const random_i = prng.random().intRangeLessThan(usize, sbr.begin, sbr.end);
+        //std.log.err("{} {} {any} {}\n", .{ ss_i, mf_i, sbr, random_i });
+        try i_array.append(wasm_allocator, random_i);
+    }
+    @import("wasm_print.zig").FlushPrint(false);
     for (0..cm.mm_subsystems.len) |i| {
         const idtol = &cm.mm_subsystems[i].tm.idtol;
         for (0..idtol.items.len) |j| {
@@ -464,14 +572,11 @@ fn minesweeper_init_board(global_mine_count: isize, include_mine_flags: bool) ![
             left_click_board.items[l_bb.byte] |= l_bb.bit; //left_click_board idtol used as mask to add remaining leftover mines.
         }
     }
-    const wtimesh: usize = cm.map_parser.?.width * cm.map_parser.?.height;
-    while (mines_left > 0) {
-        const add_i = prng.random().uintLessThan(usize, wtimesh);
-        const bb: ByteBit = .init_i(add_i);
-        if (left_click_board.items[bb.byte] & bb.bit == 0 and right_click_board.items[bb.byte] & bb.bit == 0 and mine_board.items[bb.byte] & bb.bit == 0) {
+    {
+        var random_list = try mine_tiles_random(wasm_allocator, prng.random(), .all, @bitCast(mines_left), cm.map_parser.?.width, cm.map_parser.?.height);
+        defer random_list.deinit(wasm_allocator);
+        for (random_list.items) |bb|
             mine_board.items[bb.byte] |= bb.bit;
-            mines_left -= 1;
-        }
     }
     for (i_array.items, 0..) |ri, i| {
         const solution_bits = cm.mm_subsystems[i].sb.get_range_bits(ri);
@@ -486,6 +591,12 @@ fn minesweeper_init_board(global_mine_count: isize, include_mine_flags: bool) ![
             left_click_board.items[l_bb.byte] ^= l_bb.bit; //Clear left_click_board idtol mask
         }
     }
+}
+fn minesweeper_init_board(global_mine_count: isize, include_mine_flags: bool) ![*c]StringSlice {
+    std.debug.assert(cm.is_probability_calculated());
+    clear_board();
+    const bd = get_board_data(global_mine_count, include_mine_flags) orelse return &error_slice;
+    try create_preset_board(bd);
     write_mine_seed(@truncate(cm.map_parser.?.width), @truncate(cm.map_parser.?.height)) catch allocation_error();
     parsed_width = @truncate(cm.map_parser.?.width);
     parsed_height = @truncate(cm.map_parser.?.height);
@@ -494,4 +605,94 @@ fn minesweeper_init_board(global_mine_count: isize, include_mine_flags: bool) ![
 }
 pub export fn MinesweeperInitBoard(global_mine_count: isize, include_mine_flags: bool) [*c]StringSlice {
     return minesweeper_init_board(global_mine_count, include_mine_flags) catch allocation_error();
+}
+fn to_xy(i: usize, width: usize) [2]usize {
+    return .{ i % width, i / width };
+}
+fn get_adj_tiles_bb(adj_tiles: []ByteBit, tile_i: usize, width: usize, height: usize) []ByteBit {
+    const xy = to_xy(tile_i, width);
+    var size_now: usize = 0;
+    //Clockwise adjacency starting from top to top left.
+    const not_topmost = xy[1] != 0;
+    const not_rightmost = xy[0] != width - 1;
+    const not_bottommost = xy[1] != height - 1;
+    const not_leftmost = xy[0] != 0;
+    if (not_topmost) {
+        adj_tiles[size_now] = .init_i(xy[0] + (xy[1] - 1) * width);
+        size_now += 1;
+    }
+    if (not_topmost and not_rightmost) {
+        adj_tiles[size_now] = .init_i(xy[0] + 1 + (xy[1] - 1) * width);
+        size_now += 1;
+    }
+    if (not_rightmost) {
+        adj_tiles[size_now] = .init_i(xy[0] + 1 + xy[1] * width);
+        size_now += 1;
+    }
+    if (not_rightmost and not_bottommost) {
+        adj_tiles[size_now] = .init_i(xy[0] + 1 + (xy[1] + 1) * width);
+        size_now += 1;
+    }
+    if (not_bottommost) {
+        adj_tiles[size_now] = .init_i(xy[0] + (xy[1] + 1) * width);
+        size_now += 1;
+    }
+    if (not_bottommost and not_leftmost) {
+        adj_tiles[size_now] = .init_i(xy[0] - 1 + (xy[1] + 1) * width);
+        size_now += 1;
+    }
+    if (not_leftmost) {
+        adj_tiles[size_now] = .init_i(xy[0] - 1 + xy[1] * width);
+        size_now += 1;
+    }
+    if (not_leftmost and not_topmost) {
+        adj_tiles[size_now] = .init_i(xy[0] - 1 + (xy[1] - 1) * width);
+        size_now += 1;
+    }
+    return adj_tiles[0..size_now];
+}
+export var PPStatus: PlayProbabilityStatus = .idle;
+pub export fn CancelProbability() void { //If .running, wait until it becomes .idle again
+    if (@atomicLoad(PlayProbabilityStatus, &PPStatus, .acquire) == .idle) return;
+    @atomicStore(PlayProbabilityStatus, &PPStatus, .cancel, .release);
+    while (@atomicLoad(PlayProbabilityStatus, &PPStatus, .acquire) == .cancel) {}
+}
+pub export fn ProbabilityClickTile(global_mine_count: isize, include_mine_flags: bool, tile_i: usize) void {
+    std.debug.assert(cm.is_probability_calculated());
+    clear_board();
+    const bd_o = get_board_data(global_mine_count, include_mine_flags);
+    if (bd_o) |bd| {
+        //Counts from 0 number tile (0), 1 number tile (1), 2 number tile (2), ... 8 number tile (8), and mine tile (9).
+        var f_table: [10]usize = [1]usize{0} ** 10;
+        var f_total: usize = 0;
+        var adj_bb: [8]ByteBit = undefined;
+        const adj_slice = get_adj_tiles_bb(&adj_bb, tile_i, cm.map_parser.?.width, cm.map_parser.?.height);
+        const this_bb: ByteBit = .init_i(tile_i);
+        PPStatus = .running;
+        while (@atomicLoad(PlayProbabilityStatus, &PPStatus, .acquire) == .running) {
+            clear_board();
+            create_preset_board(bd) catch unreachable;
+            if (mine_board.items[this_bb.byte] & this_bb.bit != 0) {
+                f_table[9] += 1;
+            } else {
+                var num_mines: usize = 0;
+                for (adj_slice) |a_bb| {
+                    if (mine_board.items[a_bb.byte] & a_bb.bit != 0) num_mines += 1;
+                }
+                f_table[num_mines] += 1;
+            }
+            f_total += 1;
+            if (@atomicLoad(bool, &root.CalculateStatus, .acquire)) {
+                @atomicStore(bool, &root.CalculateStatus, false, .release);
+                std.log.warn("[ ", .{});
+                for (f_table) |f| {
+                    std.log.warn("{d: >9.5}%, ", .{100.0 * @as(f32, @floatFromInt(f)) / @as(f32, @floatFromInt(f_total))});
+                }
+                std.log.warn(" ]\n", .{});
+                std.log.warn("{any} Total: {}\n", .{ f_table, f_total });
+                @import("wasm_print.zig").FlushPrint(false);
+            }
+        }
+    } else wasm_jsalloc.WasmFree(error_slice.ptr);
+    @atomicStore(PlayProbabilityStatus, &PPStatus, .idle, .release);
 }

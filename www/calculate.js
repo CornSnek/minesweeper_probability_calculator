@@ -7,7 +7,8 @@ const TE = new TextEncoder();
 onmessage = onmessage_f;
 //Because CalculateProbability might take a while (And freezes the browser page), a Worker and shared wasm memory is used to prevent freezes.
 const worker_module = {
-    CalculateProbability
+    CalculateProbability,
+    ProbabilityClickTile,
 };
 function SetSubsystemNumber(subsystems) {
     postMessage(['SetSubsystemNumber', subsystems]);
@@ -18,6 +19,14 @@ function SetTimeoutProgress(subsystem_id, progress) {
 function CalculateProbability() {
     try {
         postMessage(['parse_probability_list', WasmExports.CalculateProbability()]);
+    } catch (e) {
+        console.error(e.message);
+        console.trace();
+    }
+}
+function ProbabilityClickTile(global_mine_count, include_mine_flags, tile_i) {
+    try {
+        WasmExports.ProbabilityClickTile(global_mine_count, include_mine_flags, tile_i);
     } catch (e) {
         console.error(e.message);
         console.trace();
@@ -36,6 +45,7 @@ async function onmessage_f(e) {
         });
         WasmObj = wasm_obj;
         WasmExports = wasm_obj.instance.exports;
+        WasmExports.__stack_pointer.value = WasmExports.T2StackTop();
     } else {
         console.error('Invalid postMessage flag: ' + e.data[0]);
     }

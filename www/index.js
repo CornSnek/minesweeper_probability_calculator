@@ -2,7 +2,8 @@ import {
     PrintType, MsType, CalculateArray,
     CalculateStatus, Calculate, ProbabilityList,
     LocationCount, IDToLocationExtern, TileLocation,
-    MineFrequency, SolutionBitsExtern, StringSlice
+    MineFrequency, SolutionBitsExtern, StringSlice,
+    PlayProbabilityStatus
 } from './wasm_to_js.js'
 let WasmObj = null;
 let WasmExports = null;
@@ -152,6 +153,7 @@ async function init() {
     parse_screenshot_popup = document.getElementById('parse-screenshot-popup');
     play_current_board = document.getElementById('play-current-board');
     play_upload_current_board = document.getElementById('play-upload-current-board');
+    play_copy_board = document.getElementById('play-copy-board');
     play_body = document.getElementById('play-body');
     close_play_body = document.getElementById('close-play-body');
     play_board = document.getElementById('play-board');
@@ -164,7 +166,7 @@ async function init() {
     play_new_game = document.getElementById('play-new-game');
     play_new_game_with_board = document.getElementById('play-new-game-with-board');
     play_seed_manual = document.getElementById('play-seed-manual');
-    play_sandbox = document.getElementById('play-sandbox');
+    play_gamemode = document.getElementById('play-gamemode');
     calculate_probability = document.getElementById('calculate-probability');
     clear_probability_button = document.getElementById('clear-probability-button');
     clear_all_button = document.getElementById('clear-all-button');
@@ -229,6 +231,7 @@ async function init() {
     });
     WasmObj = wasm_obj;
     WasmExports = wasm_obj.instance.exports;
+    WasmExports.__stack_pointer.value = WasmExports.T1StackTop();
     if (columns_num.validity.valid && rows_num.validity.valid) {
         init_grid(columns_num.value, rows_num.value);
     } else {
@@ -405,14 +408,21 @@ async function init() {
         const err_slice_ptr = WasmExports.CheckCurrentBoard(parseInt(gm_count.value), include_flags.checked);
         output_any_error(err_slice_ptr);
     };
+    play_copy_board.onclick = e => {
+        console.warn(play_obj.copy_board());
+    };
     play_current_board.onclick = show_play_current_board_f;
     close_play_body.onclick = e => {
         play_body.style.display = 'none';
         web_state = STATE_IDLE;
+        WasmExports.CancelProbability();
+        clearInterval(this.probability_interval);
+        this.probability_interval = null;
     }
     play_board_container.oncontextmenu = e => e.preventDefault(); //Prevent right-click menu.
     play_new_game.onclick = e => {
         if (web_state === STATE_PLAY) {
+            play_seed_manual.disabled = false;
             if (!play_seed_manual.checked) {
                 play_board_data.value = '';
                 play_obj.init_create_board_empty(BigInt(Date.now()));
@@ -423,7 +433,20 @@ async function init() {
         }
     };
     play_new_game_with_board.onclick = e => play_obj.init_create_preset(e);
-    play_sandbox.onchange = e => flash_message(FLASH_SUCCESS, 'Sandbox mode enables continuing playing the game after hitting a mine. It also shows wrong flags after clicking a mine if any.', 5000);
+    play_gamemode.onchange = e => {
+        play_seed_manual.disabled = false;
+        switch (play_gamemode.value) {
+            case 'Standard':
+                flash_message(FLASH_SUCCESS, 'Standard mode causes a game over after revealing a mine.', 5000);
+                break;
+            case 'Sandbox':
+                flash_message(FLASH_SUCCESS, 'Sandbox mode allows playing the game after revealing a mine. It also shows any wrong flags after clicking a mine.', 5000);
+                break;
+            case 'Probability':
+                flash_message(FLASH_SUCCESS, 'Probability mode reveals one tile, resets the board, and calculates whether a tile is safe or a bomb.', 5000);
+                break;
+        }
+    };
     play_seed_manual.onchange = play_seed_manual_f;
     play_seed_manual_f();
     clear_probability_button.onclick = clear_all_probability;
@@ -1057,7 +1080,7 @@ function deselect_tiles_f(e) {
     selected_tile.select_none();
     keybind_map.clear();
 }
-function update_tile_div(div, use_is_clicked) {
+function update_tile_div(div, use_is_clicked, half_transparent) {
     const ms_type = div.dataset.ms_type;
     if (use_is_clicked) {
         if (MsType.$is_clicked[ms_type]) {
@@ -1077,6 +1100,7 @@ function update_tile_div(div, use_is_clicked) {
     img.src = 'images/' + image_url;
     img.draggable = false;
     img.classList.add('img-tile');
+    if (half_transparent) img.style.opacity = 0.5;
 }
 function set_tile(x, y, ms_type) {
     WasmExports.SetTile(x, y, ms_type);
@@ -1269,13 +1293,11 @@ class MFGList {
         non_adjacent_tiles -= adjacent_tiles;
         //console.log(`AT: ${adjacent_tiles}, NAT: ${non_adjacent_tiles}`);
         let a_denominator = 0n;
-        let na_denominator = 0n;
         let na_numerator = 0n;
         let max_gm = 0;
         let min_gm = Infinity;
         if (gmfg !== null) {
             let too_many_skip = 0;
-            let gf_sum = 0n;
             for (const [gm, gf] of gmfg) {
                 min_gm = Math.min(min_gm, gm);
                 if (gm > mine_count_adj) {
@@ -1283,14 +1305,9 @@ class MFGList {
                     continue;
                 }
                 a_denominator += gf * comb(non_adjacent_tiles, mine_count_adj - gm);
-                //Discard solutions that have too little mines and would overfill non adjacent tiles.
-                if (mine_count_adj <= non_adjacent_tiles + gm) {
-                    na_numerator += BigInt(mine_count_adj - gm) * gf;
-                    gf_sum += gf;
-                }
+                na_numerator += gf * comb(non_adjacent_tiles - 1, mine_count_adj - gm - 1);
                 max_gm = Math.max(max_gm, gm);
             }
-            na_denominator = BigInt(non_adjacent_tiles) * gf_sum;
             if (gmfg.size != 0 && gmfg.size == too_many_skip) {
                 if (include_flags.checked) {
                     flash_message(FLASH_ERROR, `Error: Too little mines! The global mine count is ${mine_count_adj + mine_flag_count} - (${mine_flag_count} mines + flags) = ${mine_count_adj}. All solutions require at least ${min_gm} or more mines. Global mine count must be >= ${min_gm + mine_flag_count}.`);
@@ -1348,26 +1365,25 @@ class MFGList {
                     flash_message(FLASH_ERROR, `Error: Too many mines! The global mine count is ${mine_count_adj}. There are only ${non_adjacent_tiles} non-adjacent tiles that can be mines. Global mine count must be <= ${non_adjacent_tiles}.`);
                 }
                 return;
-            }
-            na_denominator = non_adjacent_tiles;
+            } //Empty boards result to comb(U_{NA}, M_G - 1) / comb(U_{NA}, M_G) or simplified to just M_G/U_{NA}
+            a_denominator = non_adjacent_tiles;
             na_numerator = mine_count_adj;
         }
-        //console.log(na_numerator, na_denominator, (100 * Number(na_numerator) / Number(na_denominator)).toFixed(2));
         [...grid_body.children].forEach(div => { //Fill Non-adjacent unknown tiles with the same probability
             if (div.dataset.ms_type == MsType.unknown && div.dataset.probability === undefined) {
-                const pb = format_percentage(na_numerator, na_denominator);
+                const pb = format_percentage(na_numerator, a_denominator);
                 div.textContent = `\\( \\htmlStyle{font-size: 0.75em}{${pb}\\\%} \\)`;
                 renderMathInElement(div, {
                     trust: true,
                     strict: (code) => code === "htmlExtension" ? "ignore" : "warn",
                 });
-                if (na_numerator == na_denominator)
+                if (na_numerator == a_denominator)
                     div.classList.add('tile-pb-mine');
                 else if (na_numerator == 0n)
                     div.classList.add('tile-pb-clear');
                 else {
                     div.classList.add('tile-pb-color');
-                    const percentage = Number(na_numerator) / Number(na_denominator);
+                    const percentage = Number(na_numerator) / Number(a_denominator);
                     let tc = (percentage <= 0.5)
                         ? color_lerp(tile_colors.clear, tile_colors.neutral, percentage * 2)
                         : color_lerp(tile_colors.neutral, tile_colors.mine, percentage * 2 - 1);
@@ -1876,6 +1892,7 @@ let play_current_board;
 let play_body;
 let close_play_body;
 let play_upload_current_board;
+let play_copy_board;
 let play_board;
 let play_board_data;
 let play_board_container;
@@ -1886,7 +1903,7 @@ let play_status;
 let play_new_game;
 let play_new_game_with_board;
 let play_seed_manual;
-let play_sandbox;
+let play_gamemode;
 class Play {
     static STATE_NULL = 0;
     static STATE_BEGIN_PLAY = 1;
@@ -1895,6 +1912,7 @@ class Play {
     static STATE_YOU_LOSE = 4;
     static STATE_YOU_WIN = 5;
     static STATE_WASM_ERROR = 6;
+    static STATE_PROBABILITY = 7;
     static DIR_U = 0;
     static DIR_UR = 1;
     static DIR_R = 2;
@@ -1911,6 +1929,7 @@ class Play {
         this.num_mines_left = 0;
         this.time_since = 0;
         this.time_interval = null;
+        this.probability_interval = null;
         this.last_button = null;
         this.highlight_array = [];
     }
@@ -1957,6 +1976,7 @@ class Play {
             case Play.STATE_BEGIN_PLAY:
             case Play.STATE_BEGIN_CUSTOM:
             case Play.STATE_PLAYING:
+            case Play.STATE_PROBABILITY:
                 return true;
             default:
                 return false;
@@ -1968,16 +1988,18 @@ class Play {
         this.height = 0;
         play_board.textContent = ``;
         play_status.value = ``;
-        play_sandbox.disabled = false;
+        play_gamemode.disabled = false;
         clearInterval(this.time_interval);
         this.time_interval = null;
+        clearInterval(this.probability_interval);
+        this.probability_interval = null;
         play_mines_left.value = '000';
         play_timer.value = '000';
         this.state = Play.STATE_NULL;
     }
     won_game() {
-        play_status.value = `YOU WIN ON ${play_sandbox.checked ? 'SANDBOX' : 'STANDARD'} MODE! B)`;
-        play_sandbox.disabled = false;
+        play_status.value = `You Win On ${play_gamemode.value} Mode! B)`
+        play_gamemode.disabled = false;
         clearInterval(this.time_interval);
         this.time_interval = null;
         [...play_board.children].filter(div => parseInt(div.dataset.ms_type) === MsType.unknown).forEach(div => {
@@ -1988,8 +2010,8 @@ class Play {
         this.state = Play.STATE_YOU_WIN;
     }
     lost_game(clicked_mine_i) {
-        play_sandbox.disabled = false;
-        play_status.value = 'YOU LOSE! x(';
+        play_gamemode.disabled = false;
+        play_status.value = 'You Lose! x(';
         clearInterval(this.time_interval);
         this.time_interval = null;
         [...play_board.children].forEach(div => {
@@ -2016,9 +2038,8 @@ class Play {
         const ms_type = parseInt(this_div.dataset.ms_type);
         switch (ms_type) {
             case MsType.unknown:
-            case MsType.flagwrong:
                 if (this_div.dataset.has_mine === 'y') {
-                    if (!play_sandbox.checked)
+                    if (play_gamemode.value === 'Standard')
                         this.lost_game(this_i);
                     else {
                         const div = play_board.children[this_i];
@@ -2035,7 +2056,7 @@ class Play {
                             });
                         }
                     }
-                    return play_sandbox.checked; //Just win on sandbox mode, but not standard.
+                    return play_gamemode.value === 'Standard';
                 }
                 let num_adj_mines = 0;
                 for (let i = 0; i < 8; i++) {
@@ -2103,12 +2124,12 @@ class Play {
         play_board_data.value = copy_shared(mine_ptr, mine_len);
         this.start_custom();
     }
-    static bit_set(dv, byte_i, bit_i) {
+    static bit_is_set(dv, byte_i, bit_i) {
         return (dv.getUint8(byte_i) & (1 << bit_i)) != 0;
     }
     //Returns bool (false if a bit in lc_board_ptr has clicked a mine)
     start_custom() {
-        play_sandbox.disabled = true;
+        play_gamemode.disabled = true;
         const mine_board_ptr = WasmExports.GetMineBoard();
         const mbdv = new DataView(WasmMemory.buffer, mine_board_ptr, StringSlice.$size);
         const mine_ptr = mbdv.getUint32(StringSlice.ptr.offset, true);
@@ -2117,7 +2138,7 @@ class Play {
         for (let i = 0; i < this.width * this.height; i++) {
             const byte_i = Math.floor(i / 8);
             const bit_i = i % 8;
-            if (Play.bit_set(mine_arr, byte_i, bit_i))
+            if (Play.bit_is_set(mine_arr, byte_i, bit_i))
                 play_board.children[i].dataset.has_mine = 'y';
         }
         const lc_board_ptr = WasmExports.GetLeftClickBoard();
@@ -2132,7 +2153,7 @@ class Play {
             for (let i = 0; i < this.width * this.height; i++) {
                 const byte_i = Math.floor(i / 8);
                 const bit_i = i % 8;
-                if (Play.bit_set(dv, byte_i, bit_i))
+                if (Play.bit_is_set(dv, byte_i, bit_i))
                     if (!this.click_tile(i, false))
                         return false;
             }
@@ -2143,7 +2164,7 @@ class Play {
             for (let i = 0; i < this.width * this.height; i++) {
                 const byte_i = Math.floor(i / 8);
                 const bit_i = i % 8;
-                if (Play.bit_set(dv, byte_i, bit_i))
+                if (Play.bit_is_set(dv, byte_i, bit_i))
                     this.toggle_flag(i);
             }
         }
@@ -2156,6 +2177,22 @@ class Play {
     left_click(e, this_i) {
         this.remove_highlights();
         switch (this.state) {
+            case Play.STATE_PROBABILITY:
+                {
+                    WasmExports.CancelProbability();
+                    const seed = BigInt(Date.now());
+                    play_seed.value = seed;
+                    play_seed_manual.checked = false;
+                    play_seed_manual_f();
+                    play_seed_manual.disabled = true;
+                    WasmExports.InitRNGSeed(seed);
+                    calculate_worker.postMessage(['f', 'ProbabilityClickTile', parseInt(gm_count.value), include_flags.checked, this_i]);
+                    clearInterval(this.probability_interval);
+                    this.probability_interval = setInterval(() => {
+                        Atomics.store(new Uint8Array(WasmMemory.buffer), WasmExports.CalculateStatus.value, 1);
+                    }, 1000);
+                    break;
+                }
             case Play.STATE_BEGIN_CUSTOM:
                 {
                     if (this.start_custom()) {
@@ -2282,10 +2319,16 @@ class Play {
             div.classList.add('tile');
             div.dataset.i = i;
             div.dataset.ms_type = MsType.unknown;
-            div.onmousedown = e => {
+            const onmousedown_f = (e, ci) => {
                 if (!Play.is_playable_state(this.state)) return;
                 this.last_button = e.buttons;
-                this.chording_highlight(e, i);
+                this.chording_highlight(e, ci);
+            };
+            play_board.onmousedown = e => {
+                const tile = e.target.closest('.tile');
+                if (tile && play_board.contains(tile)) {
+                    onmousedown_f(e, tile.dataset.i);
+                }
             }
             div.ondragstart = () => false;
             div.onmouseup = e => {
@@ -2313,11 +2356,11 @@ class Play {
         }
     }
     reset_board(use_state) {
-        play_sandbox.disabled = false;
-        if (this.time_interval !== null) {
-            clearInterval(this.time_interval);
-            this.time_interval = null;
-        }
+        play_gamemode.disabled = false;
+        clearInterval(this.time_interval);
+        this.time_interval = null;
+        clearInterval(this.probability_interval);
+        this.probability_interval = null;
         for (let i = 0; i < this.width * this.height; i++) {
             const div = play_board.children[i];
             div.dataset.ms_type = MsType.unknown;
@@ -2332,8 +2375,68 @@ class Play {
         this.state = use_state;
         play_status.value = '';
     }
+    make_preset_transparent_tiles() {
+        const lc_board_ptr = WasmExports.GetLeftClickBoard();
+        const rc_board_ptr = WasmExports.GetRightClickBoard();
+        const mboard_ptr = WasmExports.GetMineBoard();
+        const lcbdv = new DataView(WasmMemory.buffer, lc_board_ptr, StringSlice.$size);
+        const rcbdv = new DataView(WasmMemory.buffer, rc_board_ptr, StringSlice.$size);
+        const mboard_dv = new DataView(WasmMemory.buffer, mboard_ptr, StringSlice.$size);
+        const lcb_len = lcbdv.getUint32(StringSlice.len.offset, true);
+        const rcb_len = rcbdv.getUint32(StringSlice.len.offset, true);
+        const mb_len = mboard_dv.getUint32(StringSlice.len.offset, true);
+        const mb_ptr = mboard_dv.getUint32(StringSlice.ptr.offset, true);
+        const mbdv = new DataView(WasmMemory.buffer, mb_ptr, mb_len);
+        if (lcb_len != 0) {
+            const lcb_ptr = lcbdv.getUint32(StringSlice.ptr.offset, true);
+            const dv = new DataView(WasmMemory.buffer, lcb_ptr, lcb_len);
+            for (let i = 0; i < this.width * this.height; i++) {
+                const byte_i = Math.floor(i / 8);
+                const bit_i = i % 8;
+                const div = play_board.children[i];
+                if (Play.bit_is_set(dv, byte_i, bit_i)) {
+                    const [x, y] = Play.to_xy(i, this.width);
+                    if (play_gamemode.value !== 'Probability') {
+                        let num_adj_mines = 0;
+                        for (let j = 0; j < 8; j++) {
+                            const adj_i = Play.get_adj(x, y, this.width, this.height, j);
+                            if (adj_i !== null) {
+                                const byte_i = Math.floor(adj_i / 8);
+                                const bit_i = adj_i % 8;
+                                if (Play.bit_is_set(mbdv, byte_i, bit_i))
+                                    num_adj_mines++;
+                            }
+                        }
+                        div.dataset.ms_type = MsType[num_adj_mines];
+                    } else {
+                        div.dataset.ms_type = MsType.donotcare;
+                    }
+                    update_tile_div(div, true, true);
+                    div.dataset.ms_type = MsType.unknown;
+                }
+            }
+        }
+        if (rcb_len != 0) {
+            const rcb_ptr = rcbdv.getUint32(StringSlice.ptr.offset, true);
+            const dv = new DataView(WasmMemory.buffer, rcb_ptr, rcb_len);
+            for (let i = 0; i < this.width * this.height; i++) {
+                const byte_i = Math.floor(i / 8);
+                const bit_i = i % 8;
+                const div = play_board.children[i];
+                if (Play.bit_is_set(dv, byte_i, bit_i)) {
+                    div.dataset.ms_type = MsType.flag;
+                    update_tile_div(div, true, true);
+                    div.dataset.ms_type = MsType.unknown;
+                }
+            }
+        }
+    }
+    static state_probability_else(other_state) {
+        return play_gamemode.value !== 'Probability' ? other_state : Play.STATE_PROBABILITY
+    }
     init_create_preset(e) {
-        if(!WasmExports.HasUploaded()){
+        play_seed_manual.disabled = false;
+        if (!WasmExports.HasUploaded()) {
             flash_message(FLASH_ERROR, 'A Board has not been uploaded with Upload Current Board.', 5000);
             this.state = Play.STATE_WASM_ERROR;
             return;
@@ -2349,15 +2452,8 @@ class Play {
         const mine_len = mbdv.getUint32(StringSlice.len.offset, true);
         play_board_data.value = copy_shared(mine_ptr, mine_len);
         this.init_create_board(WasmExports.ParsedWidth(), WasmExports.ParsedHeight(), WasmExports.ParsedNumMines());
-        this.reset_board(Play.STATE_BEGIN_CUSTOM);
-        const lc_board_ptr = WasmExports.GetLeftClickBoard();
-        const rc_board_ptr = WasmExports.GetRightClickBoard();
-        const lcbdv = new DataView(WasmMemory.buffer, lc_board_ptr, StringSlice.$size);
-        const rcbdv = new DataView(WasmMemory.buffer, rc_board_ptr, StringSlice.$size);
-        const lcb_len = lcbdv.getUint32(StringSlice.len.offset, true);
-        const rcb_len = rcbdv.getUint32(StringSlice.len.offset, true);
-        if (lcb_len != 0 || rcb_len != 0)
-            flash_message(FLASH_SUCCESS, 'l or m parameter has been set. Your first click will be ignored.', 5000);
+        this.reset_board(Play.state_probability_else(Play.STATE_BEGIN_CUSTOM));
+        this.make_preset_transparent_tiles();
     }
     init_create_custom_board_seed(seed_str) {
         const seed_te = TE.encode(seed_str);
@@ -2370,23 +2466,19 @@ class Play {
         if (output_any_error(err_slice_ptr)) return;
         play_board.style.setProperty('--num-columns', WasmExports.ParsedWidth());
         this.init_create_board(WasmExports.ParsedWidth(), WasmExports.ParsedHeight(), WasmExports.ParsedNumMines());
-        this.reset_board(Play.STATE_BEGIN_CUSTOM);
-        const lc_board_ptr = WasmExports.GetLeftClickBoard();
-        const rc_board_ptr = WasmExports.GetRightClickBoard();
-        const lcbdv = new DataView(WasmMemory.buffer, lc_board_ptr, StringSlice.$size);
-        const rcbdv = new DataView(WasmMemory.buffer, rc_board_ptr, StringSlice.$size);
-        const lcb_len = lcbdv.getUint32(StringSlice.len.offset, true);
-        const rcb_len = rcbdv.getUint32(StringSlice.len.offset, true);
-        if (lcb_len != 0 || rcb_len != 0)
-            flash_message(FLASH_SUCCESS, 'l or m parameter has been set. Your first click will be ignored.', 5000);
+        this.reset_board(Play.state_probability_else(Play.STATE_BEGIN_CUSTOM));
+        this.make_preset_transparent_tiles();
     }
     init_create_board_empty(seed) {
         play_board.style.setProperty('--num-columns', columns);
         this.init_create_board(columns, rows, parseInt(gm_count.value));
-        this.reset_board(Play.STATE_BEGIN_PLAY);
+        this.reset_board(Play.state_probability_else(Play.STATE_BEGIN_PLAY));
         this.seed = seed;
         play_seed.value = seed;
         WasmExports.InitRNGSeed(seed);
+    }
+    copy_board() {
+        return 'TODO';
     }
 };
 const play_obj = new Play();

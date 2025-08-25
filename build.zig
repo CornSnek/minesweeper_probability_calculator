@@ -41,7 +41,7 @@ fn EnumsToJSClass(EnumClass: anytype, comptime export_name: []const u8) []const 
                     if (@typeInfo(@typeInfo(FnInfo.return_type.?).optional.child) == .int) {
                         export_str = export_str ++ "\tstatic get $" ++ decl.name ++ "() { return Array.from([";
                         inline for (fields) |field|
-                            export_str = export_str ++ std.fmt.comptimePrint(" {?},", .{@field(EnumClass, decl.name)(@enumFromInt(field.value))});
+                            export_str = export_str ++ std.fmt.comptimePrint(" {any},", .{@field(EnumClass, decl.name)(@enumFromInt(field.value))});
                         export_str = export_str ++ " ]); }\n";
                     }
                 }
@@ -175,50 +175,38 @@ pub fn build(b: *std.Build) !void {
     b.getInstallStep().dependOn(&install_website.step);
     install_website_run_step.dependOn(&install_website.step);
 
-    const wasm_exe = b.addExecutable(.{
+    const wasm_lib = b.addExecutable(.{
         .name = program_name,
-        .root_source_file = b.path("src/wasm_main.zig"),
-        .target = b.resolveTargetQuery(.{
-            .cpu_arch = .wasm32,
-            .os_tag = .freestanding,
-            .cpu_features_add = std.Target.wasm.featureSet(&.{ .atomics, .bulk_memory }),
+        .root_module = b.createModule(.{
+            .root_source_file = b.path("src/wasm_main.zig"),
+            .target = b.resolveTargetQuery(.{
+                .cpu_arch = .wasm32,
+                .os_tag = .freestanding,
+                .cpu_features_add = std.Target.wasm.featureSet(&.{ .atomics, .bulk_memory }),
+            }),
+            .optimize = optimize,
         }),
-        .optimize = optimize,
     });
-    wasm_exe.import_memory = true;
-    wasm_exe.initial_memory = 65536 * 20;
-    wasm_exe.max_memory = 65536 * 65536;
-    wasm_exe.shared_memory = true;
-    wasm_exe.entry = .disabled;
-    wasm_exe.rdynamic = true;
-    wasm_exe.root_module.export_symbol_names = &.{
-        "WasmListAllocs",
-        "WasmAlloc",
-        "WasmFree",
-        "WasmFreeAll",
-        "FlushPrint",
-        "PrintBufferMax",
-        "CalculateStatus",
-        "CancelCalculation",
-        "CreateGrid",
-        "QueryTile",
-        "SetTile",
-        "CalculateProbability",
-        "InitRNGSeed",
-        "MinesweeperInitEmpty",
-        "ParseMineSeed",
-        "ParsedWidth",
-        "ParsedHeight",
-        "ParsedNumMines",
-        "GetMineBoard",
-        "GetLeftClickBoard",
-        "GetRightClickBoard",
-        "GetMineSeed",
-        "UploadCurrentBoard",
-        "HasUploaded",
-        "CheckCurrentBoard",
+    wasm_lib.import_memory = true;
+    wasm_lib.initial_memory = 65536 * 20;
+    wasm_lib.max_memory = 65536 * 65536;
+    wasm_lib.shared_memory = true;
+    wasm_lib.entry = .disabled;
+    wasm_lib.rdynamic = true;
+    wasm_lib.root_module.export_symbol_names = &.{
+        "__stack_pointer",   "T1StackTop",           "T2StackTop",
+        "WasmListAllocs",    "WasmAlloc",            "WasmFree",
+        "WasmFreeAll",       "FlushPrint",           "PrintBufferMax",
+        "CalculateStatus",   "CancelCalculation",    "CreateGrid",
+        "QueryTile",         "SetTile",              "CalculateProbability",
+        "InitRNGSeed",       "MinesweeperInitEmpty", "ParseMineSeed",
+        "ParsedWidth",       "ParsedHeight",         "ParsedNumMines",
+        "GetMineBoard",      "GetLeftClickBoard",    "GetRightClickBoard",
+        "GetMineSeed",       "UploadCurrentBoard",   "HasUploaded",
+        "CheckCurrentBoard", "ProbabilityClickTile", "CancelProbability",
+        "PPStatus",
     };
-    const install_wasm = b.addInstallArtifact(wasm_exe, .{
+    const install_wasm = b.addInstallArtifact(wasm_lib, .{
         .dest_sub_path = try std.fmt.allocPrint(b.allocator, "{s}/{s}.wasm", .{ www_root, program_name }),
     });
 
@@ -262,12 +250,14 @@ pub fn build(b: *std.Build) !void {
 
     const print_shared_wasm_info_exe = b.addExecutable(.{
         .name = "print_shared_wasm_info",
-        .root_source_file = b.path("src/print_wasm32_info.zig"),
-        .target = b.resolveTargetQuery(.{
-            .cpu_arch = .wasm32,
-            .os_tag = .freestanding,
+        .root_module = b.createModule(.{
+            .root_source_file = b.path("src/print_wasm32_info.zig"),
+            .target = b.resolveTargetQuery(.{
+                .cpu_arch = .wasm32,
+                .os_tag = .freestanding,
+            }),
+            .optimize = .ReleaseSmall,
         }),
-        .optimize = .ReleaseSmall,
     });
     print_shared_wasm_info_exe.entry = .disabled;
     print_shared_wasm_info_exe.rdynamic = true;
