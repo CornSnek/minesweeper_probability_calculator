@@ -75,3 +75,7 @@ pub const PlayProbabilityStatus = enum(i32) {
     running,
     cancel,
 };
+pub const FStruct = extern struct {
+    f: [10]usize,
+    t: usize,
+};

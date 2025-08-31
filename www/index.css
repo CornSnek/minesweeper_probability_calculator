@@ -338,10 +338,6 @@ a:hover {
 
 .window {
     position: fixed;
-    top: calc(100% - 200px);
-    left: 0;
-    width: 500px;
-    height: 200px;
     z-index: 6;
     box-shadow: 0px 0px 5px black;
     background-color: var(--bg-3);
@@ -359,6 +355,42 @@ a:hover {
     display: none;
 }
 
-#config-window-close {
+.window-close {
     cursor: pointer;
+}
+
+.pbar-chart {
+    display: flex;
+    flex-direction: column;
+    width: 100%;
+}
+
+.pbar-container {
+    position: relative;
+    width: 100%;
+    height: 1rem;
+}
+
+.pbar {
+    position: absolute;
+    top: 0;
+    left: 0;
+    --width: 0%;
+    --color: #ffffff;
+    background: var(--color);
+    width: var(--width);
+    height: 100%;
+    transition-property: width;
+    transition-duration: 0.4s;
+    transition-timing-function: ease;
+    transition-delay: 0s;
+    z-index: 7;
+}
+
+.plabel {
+    position: absolute;
+    top: 0;
+    left: 0;
+    height: 100%;
+    z-index: 8;
 }

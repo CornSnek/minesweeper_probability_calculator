@@ -53,6 +53,7 @@ const STATE_UPLOAD = 2;
 const STATE_PLAY = 3;
 let web_state = STATE_IDLE;
 let tile_colors = {};
+//let renderMathInElement = () => {};
 class UndoNode {
     constructor(x, y, ms_type) {
         this.x = x;
@@ -197,6 +198,11 @@ async function init() {
     show_solution_seed = document.getElementById('show-solution-seed');
     show_solution_subsystem = document.getElementById('show-solution-subsystem');
     show_solution_output = document.getElementById('show-solution-output');
+    prob_chart = document.getElementById('prob-chart');
+    prob_desc = document.getElementById('prob-desc');
+    prob_exclude_mine = document.getElementById('prob-exclude-mine');
+    prob_window = document.getElementById('prob-window');
+    prob_window_close = document.getElementById('prob-window-close');
     const root_comp = getComputedStyle(document.documentElement);
     tile_colors.neutral = root_comp.getPropertyValue('--ms-probability');
     tile_colors.mine = root_comp.getPropertyValue('--ms-probability-mine');
@@ -227,7 +233,7 @@ async function init() {
         }
     }
     const wasm_obj = await WebAssembly.instantiateStreaming(fetch('./minesweeper_calculator.wasm'), {
-        env: { memory: WasmMemory, JSPrint, ClearResults, AppendResults, FinalizeResults, SetSubsystemNumber, SetTimeoutProgress },
+        env: { memory: WasmMemory, JSPrint, ClearResults, AppendResults, FinalizeResults, SetSubsystemNumber, SetTimeoutProgress, ReturnProbabilityStats: () => { } },
     });
     WasmObj = wasm_obj;
     WasmExports = wasm_obj.instance.exports;
@@ -346,6 +352,7 @@ async function init() {
         }
     };
     config_window_close.onclick = hide_config_window_f;
+    prob_window_close.onclick = hide_prob_f;
     window.addEventListener('resize', e => {
         const tab = document.querySelector('.options-gui.panel-show');
         if (tab !== null) {
@@ -386,6 +393,7 @@ async function init() {
             return;
         }
         if (confirm('Are you sure? This will clear all tiles.')) {
+            hide_prob_f(e);
             init_grid(parseInt(columns_num.value), parseInt(rows_num.value));
         }
     };
@@ -408,9 +416,7 @@ async function init() {
         const err_slice_ptr = WasmExports.CheckCurrentBoard(parseInt(gm_count.value), include_flags.checked);
         output_any_error(err_slice_ptr);
     };
-    play_copy_board.onclick = e => {
-        console.warn(play_obj.copy_board());
-    };
+    play_copy_board.onclick = e => play_obj.copy_board_str(e);
     play_current_board.onclick = show_play_current_board_f;
     close_play_body.onclick = e => {
         play_body.style.display = 'none';
@@ -422,6 +428,7 @@ async function init() {
     play_board_container.oncontextmenu = e => e.preventDefault(); //Prevent right-click menu.
     play_new_game.onclick = e => {
         if (web_state === STATE_PLAY) {
+            hide_prob_f(e);
             play_seed_manual.disabled = false;
             if (!play_seed_manual.checked) {
                 play_board_data.value = '';
@@ -432,19 +439,35 @@ async function init() {
 
         }
     };
-    play_new_game_with_board.onclick = e => play_obj.init_create_preset(e);
+    play_new_game_with_board.onclick = e => {
+        if (web_state === STATE_PLAY) {
+            hide_prob_f(e);
+            play_obj.init_create_preset(e);
+        }
+    };
     play_gamemode.onchange = e => {
         play_seed_manual.disabled = false;
         switch (play_gamemode.value) {
             case 'Standard':
                 flash_message(FLASH_SUCCESS, 'Standard mode causes a game over after revealing a mine.', 5000);
+                play_new_game.disabled = false;
                 break;
             case 'Sandbox':
                 flash_message(FLASH_SUCCESS, 'Sandbox mode allows playing the game after revealing a mine. It also shows any wrong flags after clicking a mine.', 5000);
+                play_new_game.disabled = false;
                 break;
             case 'Probability':
-                flash_message(FLASH_SUCCESS, 'Probability mode reveals one tile, resets the board, and calculates whether a tile is safe or a bomb.', 5000);
+                flash_message(FLASH_SUCCESS, 'Probability mode calculates the statistics of one tile being a specific tile.', 5000);
+                play_new_game.disabled = true;
                 break;
+        }
+    };
+    play_new_game.disabled = play_gamemode.value == 'Probability';
+    prob_exclude_mine.onchange = e => {
+        if (prob_exclude_mine.checked) {
+            flash_message(FLASH_SUCCESS, 'Percentage is calculated excluding mine (M) frequency.', 5000);
+        } else {
+            flash_message(FLASH_SUCCESS, 'Percentage is calculated including mine (M) frequency.', 5000);
         }
     };
     play_seed_manual.onchange = play_seed_manual_f;
@@ -478,8 +501,9 @@ async function init() {
         create_board_pattern(div, div.dataset.ncolumns, div.dataset.str);
         div.onclick = e => {
             const copy_data = SelectedTile.ClipboardHeader + div.dataset.str.replace(/[cv]([.?]|\(.*?\))/g, 'c');
-            navigator.clipboard.writeText(copy_data).catch(err => console.warn('Clipboard copy failed: ' + err));
-            flash_message(FLASH_SUCCESS, 'Copied to Clipboard', 3000);
+            navigator.clipboard.writeText(copy_data)
+                .then(() => flash_message(FLASH_SUCCESS, 'Copied to Clipboard', 3000))
+                .catch(err => console.warn('Clipboard copy failed: ' + err));
         };
     });
     patterns_table_of_contents.innerHTML = patterns_table_of_contents.textContent + '</ul>';
@@ -584,6 +608,7 @@ const worker_handler_module = {
     FinalizeResults,
     SetSubsystemNumber,
     SetTimeoutProgress,
+    SendProbabilityStats,
     parse_probability_list,
     do_print,
 };
@@ -1087,6 +1112,8 @@ function update_tile_div(div, use_is_clicked, half_transparent) {
             div.classList.add('tile-clicked');
             if (ms_type == MsType.mine || ms_type == MsType.flagwrong)
                 div.classList.add('tile-mine');
+            else
+                div.classList.remove('tile-mine');
         } else {
             div.classList.remove('tile-clicked');
             div.classList.remove('tile-mine');
@@ -1232,11 +1259,11 @@ class MineFrequencyGraph {
         this.map = new_map;
     }
 }
-function format_percentage(bnn, bnd) {
+function format_percentage(bnn, bnd, tens_count = 1, ones_count = 2) {
     const per = (Number(bnn) / Number(bnd)) * 100;
     if (bnn === bnd) return per.toFixed();
-    else if (per >= 10) return per.toFixed(1);
-    else return per.toFixed(2);
+    else if (per >= 10) return per.toFixed(tens_count);
+    else return per.toFixed(ones_count);
 }
 class MFGList {
     constructor(len) {
@@ -1887,7 +1914,64 @@ async function parse_screenshot_board(img_rows, img_columns, tile_pixel_size, cl
 }
 function play_seed_manual_f() {
     play_seed.disabled = !play_seed_manual.checked;
-};
+}
+let prob_chart;
+let prob_desc;
+let prob_exclude_mine;
+let prob_window;
+let prob_window_close;
+function hide_prob_f(e) {
+    WasmExports.CancelProbability();
+    clearInterval(play_obj.probability_interval);
+    play_obj.probability_interval = null;
+    prob_window.classList.add('window-hide');
+}
+//Frequency format [0-tile, 1-tile, 2-tile, ... 7-tile, 8-tile, mine, total].
+function SendProbabilityStats(arr, tile_i) {
+    const p_labels = ['0', '1', '2', '3', '4', '5', '6', '7', '8', 'M'];
+    const p_colors = [
+        '#bfbfbf', '#0000ff', '#008000',
+        '#ff0000', '#000080', '#800000',
+        '#008080', '#000000', '#808080', '#bf3030'
+    ];
+    if (prob_chart.children.length === 0) {
+        for (let i = 0; i < 10; i++) {
+            const pbar_container = document.createElement('div');
+            prob_chart.appendChild(pbar_container);
+            pbar_container.classList.add('pbar-container');
+            const pbar = document.createElement('div');
+            pbar_container.appendChild(pbar);
+            pbar.classList.add('pbar');
+            pbar.style.setProperty('--color', p_colors[i]);
+            const plabel = document.createElement('div');
+            pbar_container.appendChild(plabel);
+            plabel.classList.add('plabel');
+        }
+        const pdesc = document.createElement('div');
+        prob_chart.appendChild(pdesc);
+    }
+    for (let i = 0; i < 10; i++) {
+        const p_label = p_labels[i];
+        let perc_str;
+        if (!prob_exclude_mine.checked) {
+            perc_str = `${format_percentage(arr[i], arr[10], 4, 5)}%`;
+        } else {
+            if (i != 9) {
+                perc_str = `${format_percentage(arr[i], arr[10] - arr[9], 4, 5)}%`;
+            } else {
+                perc_str = `${format_percentage(0, 1, 4, 5)}%`;
+            }
+        }
+        const pbar_container = prob_chart.children[i];
+        const pbar = pbar_container.children[0];
+        pbar.style.setProperty('--width', perc_str);
+        const plabel = pbar_container.children[1];
+        plabel.textContent = `${p_label} (${perc_str}) (${arr[i]} game(s))`;
+    }
+    const xy = Play.to_xy(tile_i, columns);
+    const total_games = (!prob_exclude_mine.checked) ? arr[10] : arr[10] - arr[9];
+    prob_desc.textContent = `Selected Tile: (x: ${xy[0]}, y: ${xy[1]}) Total: ${total_games}`;
+}
 let play_current_board;
 let play_body;
 let close_play_body;
@@ -2143,12 +2227,12 @@ class Play {
         }
         const lc_board_ptr = WasmExports.GetLeftClickBoard();
         const rc_board_ptr = WasmExports.GetRightClickBoard();
-        const lcbdv = new DataView(WasmMemory.buffer, lc_board_ptr, StringSlice.$size);
-        const rcbdv = new DataView(WasmMemory.buffer, rc_board_ptr, StringSlice.$size);
-        const lcb_len = lcbdv.getUint32(StringSlice.len.offset, true);
-        const rcb_len = rcbdv.getUint32(StringSlice.len.offset, true);
+        const lcbpdv = new DataView(WasmMemory.buffer, lc_board_ptr, StringSlice.$size);
+        const rcbpdv = new DataView(WasmMemory.buffer, rc_board_ptr, StringSlice.$size);
+        const lcb_len = lcbpdv.getUint32(StringSlice.len.offset, true);
+        const rcb_len = rcbpdv.getUint32(StringSlice.len.offset, true);
         if (lcb_len != 0) {
-            const lcb_ptr = lcbdv.getUint32(StringSlice.ptr.offset, true);
+            const lcb_ptr = lcbpdv.getUint32(StringSlice.ptr.offset, true);
             const dv = new DataView(WasmMemory.buffer, lcb_ptr, lcb_len);
             for (let i = 0; i < this.width * this.height; i++) {
                 const byte_i = Math.floor(i / 8);
@@ -2159,7 +2243,7 @@ class Play {
             }
         }
         if (rcb_len != 0) {
-            const rcb_ptr = rcbdv.getUint32(StringSlice.ptr.offset, true);
+            const rcb_ptr = rcbpdv.getUint32(StringSlice.ptr.offset, true);
             const dv = new DataView(WasmMemory.buffer, rcb_ptr, rcb_len);
             for (let i = 0; i < this.width * this.height; i++) {
                 const byte_i = Math.floor(i / 8);
@@ -2174,6 +2258,9 @@ class Play {
         }, 250);
         return true;
     }
+    static probability_interval_f() {
+        Atomics.store(new Uint8Array(WasmMemory.buffer), WasmExports.CalculateStatus.value, 1);
+    }
     left_click(e, this_i) {
         this.remove_highlights();
         switch (this.state) {
@@ -2187,10 +2274,9 @@ class Play {
                     play_seed_manual.disabled = true;
                     WasmExports.InitRNGSeed(seed);
                     calculate_worker.postMessage(['f', 'ProbabilityClickTile', parseInt(gm_count.value), include_flags.checked, this_i]);
+                    prob_window.classList.remove('window-hide');
                     clearInterval(this.probability_interval);
-                    this.probability_interval = setInterval(() => {
-                        Atomics.store(new Uint8Array(WasmMemory.buffer), WasmExports.CalculateStatus.value, 1);
-                    }, 1000);
+                    this.probability_interval = setInterval(Play.probability_interval_f, 1000);
                     break;
                 }
             case Play.STATE_BEGIN_CUSTOM:
@@ -2378,14 +2464,14 @@ class Play {
     make_preset_transparent_tiles() {
         const lc_board_ptr = WasmExports.GetLeftClickBoard();
         const rc_board_ptr = WasmExports.GetRightClickBoard();
-        const mboard_ptr = WasmExports.GetMineBoard();
+        const m_board_ptr = WasmExports.GetMineBoard();
         const lcbdv = new DataView(WasmMemory.buffer, lc_board_ptr, StringSlice.$size);
         const rcbdv = new DataView(WasmMemory.buffer, rc_board_ptr, StringSlice.$size);
-        const mboard_dv = new DataView(WasmMemory.buffer, mboard_ptr, StringSlice.$size);
+        const m_board_dv = new DataView(WasmMemory.buffer, m_board_ptr, StringSlice.$size);
         const lcb_len = lcbdv.getUint32(StringSlice.len.offset, true);
         const rcb_len = rcbdv.getUint32(StringSlice.len.offset, true);
-        const mb_len = mboard_dv.getUint32(StringSlice.len.offset, true);
-        const mb_ptr = mboard_dv.getUint32(StringSlice.ptr.offset, true);
+        const mb_len = m_board_dv.getUint32(StringSlice.len.offset, true);
+        const mb_ptr = m_board_dv.getUint32(StringSlice.ptr.offset, true);
         const mbdv = new DataView(WasmMemory.buffer, mb_ptr, mb_len);
         if (lcb_len != 0) {
             const lcb_ptr = lcbdv.getUint32(StringSlice.ptr.offset, true);
@@ -2409,7 +2495,7 @@ class Play {
                         }
                         div.dataset.ms_type = MsType[num_adj_mines];
                     } else {
-                        div.dataset.ms_type = MsType.donotcare;
+                        div.dataset.ms_type = WasmExports.QueryTile(x, y); //Calculate if it might be an X tile.
                     }
                     update_tile_div(div, true, true);
                     div.dataset.ms_type = MsType.unknown;
@@ -2477,8 +2563,38 @@ class Play {
         play_seed.value = seed;
         WasmExports.InitRNGSeed(seed);
     }
-    copy_board() {
-        return 'TODO';
+    copy_board_str(e) {
+        let board_str = SelectedTile.ClipboardHeader;
+        [...play_board.children].forEach((div, i) => {
+            const ms_type = parseInt(div.dataset.ms_type);
+            switch (ms_type) {
+                case (MsType['0']):
+                case (MsType['1']):
+                case (MsType['2']):
+                case (MsType['3']):
+                case (MsType['4']):
+                case (MsType['5']):
+                case (MsType['6']):
+                case (MsType['7']):
+                case (MsType['8']):
+                case (MsType.unknown):
+                case (MsType.mine):
+                case (MsType.flag):
+                case (MsType.donotcare):
+                    board_str += MsType.$js_ch[ms_type];
+                    break;
+                case (MsType.minenoclick):
+                    board_str += MsType.$js_ch[MsType.mine];
+                    break;
+                default:
+                    board_str += MsType.$js_ch[MsType.unknown];
+                    break;
+            }
+            if (i % this.width == this.width - 1) board_str += ',';
+        });
+        navigator.clipboard.writeText(board_str)
+            .then(() => flash_message(FLASH_SUCCESS, 'Copied to Clipboard', 3000))
+            .catch(err => console.warn('Clipboard copy failed: ' + err));
     }
 };
 const play_obj = new Play();

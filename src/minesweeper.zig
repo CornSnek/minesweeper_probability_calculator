@@ -888,13 +888,29 @@ pub const MinesweeperMatrix = struct {
         }
         return true;
     }
-    pub fn format(self: MinesweeperMatrix, comptime f: []const u8, options: std.fmt.FormatOptions, writer: anytype) !void {
+    pub fn format(self: MinesweeperMatrix, writer: *std.io.Writer) std.io.Writer.Error!void {
+        try writer.writeAll("MinesweeperMatrix{[");
+        for (self.lcs.items, 0..) |lc, i| {
+            try writer.writeAll("\n\t[");
+            try lc.format(writer);
+            try writer.writeByte(']');
+            if (i != self.lcs.items.len - 1) try writer.writeAll(", ");
+        }
+        try writer.writeAll("\n], \n\t");
+        for (self.tm.idtol.items, 0..self.tm.idtol.items.len) |loc, i| {
+            try writer.print("ID#{} = ({},{})", .{ i, loc.x, loc.y });
+            try writer.writeAll(", ");
+        }
+        try writer.writeAll("\n}\n");
+    }
+    ///TODO: Rewrite for 0.15.1 as fn format(self: MinesweeperMatrix, writer: *std.io.Writer) std.io.Writer.Error!void
+    pub fn old_format(self: MinesweeperMatrix, comptime f: []const u8, options: std.fmt.FormatOptions, writer: anytype) !void {
         try writer.writeAll("MinesweeperMatrix{[");
         const pretty_print = std.mem.eql(u8, f, "p");
         for (self.lcs.items, 0..) |lc, i| {
             if (pretty_print) try writer.writeAll("\n\t");
             try writer.writeByte('[');
-            try lc.format(f, options, writer);
+            try lc.old_format(f, options, writer);
             try writer.writeByte(']');
             if (i != self.lcs.items.len - 1) {
                 try writer.writeAll(", ");
@@ -948,7 +964,23 @@ pub const LinearCombination = struct {
         _ = lc.insert(nmt);
         return lc;
     }
-    pub fn format(self: LinearCombination, comptime _: []const u8, options: std.fmt.FormatOptions, writer: anytype) !void {
+    pub fn format(self: LinearCombination, writer: *std.io.Writer) std.io.Writer.Error!void {
+        var next: ?*const Term = self.head;
+        while (next) |n| {
+            try writer.writeByte('(');
+            try writer.printInt(n.v, 10, .lower, .{});
+            if (n.id) |id| {
+                try writer.print(" * ID#{}", .{id});
+            } else {
+                try writer.writeAll(" mines");
+            }
+            try writer.writeByte(')');
+            next = n.next;
+            if (next != null)
+                try writer.writeAll(" + ");
+        }
+    }
+    pub fn old_format(self: LinearCombination, comptime _: []const u8, options: std.fmt.FormatOptions, writer: anytype) !void {
         var next: ?*const Term = self.head;
         while (next) |n| {
             try writer.writeByte('(');

@@ -76,7 +76,6 @@ pub const CalculatedMap = struct {
 pub var cm: CalculatedMap = .empty;
 export fn CreateGrid(width: usize, height: usize) void {
     cm.deinit_mp(wasm_allocator);
-    std.log.debug("{*} {*}", .{ T1StackTop(), T2StackTop() });
     const mp_status = minesweeper.MapParser.init(wasm_allocator, width, height);
     if (mp_status == .ok) {
         cm.map_parser = mp_status.ok;
@@ -199,7 +198,7 @@ export fn CalculateProbability() [*c]shared.CalculateArray {
             cm.calculate_array = switch (e) {
                 error.OutOfMemory => .init_error(.alloc_error),
                 else => |e2| v: {
-                    std.log.err("{!}\n", .{e2});
+                    std.log.err("{any}\n", .{e2});
                     break :v .init_error(.unknown);
                 },
             };
@@ -221,7 +220,7 @@ export fn CalculateProbability() [*c]shared.CalculateArray {
                 error.OutOfMemory => .init_error(.alloc_error),
                 error.NoSolutions => .init_error(.no_solutions),
                 else => |e2| v: {
-                    std.log.err("{!}\n", .{e2});
+                    std.log.err("{any}\n", .{e2});
                     break :v .init_error(.unknown);
                 },
             };

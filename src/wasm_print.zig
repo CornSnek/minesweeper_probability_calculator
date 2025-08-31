@@ -33,7 +33,7 @@ pub export fn FlushPrint(mark_full: bool) void {
     if (override_print) |ovp| {
         JSPrint(ovp.ptr, ovp.len, false);
     } else {
-        if (wasm_printer.pos != 0) JSPrint(&wasm_printer.buf[0], wasm_printer.pos, mark_full);
+        if (wasm_printer.writer.end != 0) JSPrint(&wasm_printer.writer.buffer[0], wasm_printer.writer.end, mark_full);
         wasm_printer.reset();
     }
 }
@@ -42,7 +42,9 @@ pub export fn PrintBufferMax() usize {
 }
 pub var PrintBufferAutoFlushBytes: usize = 4096;
 const PrintBufferT = [PrintBufferMax()]u8;
-var wasm_printer = WasmPrinter.init();
+//0th byte represents the number of messages to be added to js console print.
+var wp_buf: PrintBufferT = [1]u8{0} ++ [1]u8{undefined} ** (PrintBufferMax() - 1);
+var wasm_printer = WasmPrinter.init(&wp_buf);
 ///Assuming buf is encoded properly using the comment from `std_options.logFn`
 pub const std_options = struct {
     pub const log_level = .debug;
@@ -56,84 +58,141 @@ pub const std_options = struct {
         args: anytype,
     ) void {
         override_print = null;
-        if (wasm_printer.pos >= PrintBufferMax() - 3 or wasm_printer.buf[0] == 255)
+        if (wasm_printer.writer.end >= PrintBufferMax() - 3 or wasm_printer.writer.buffer[0] == 255)
             FlushPrint(false);
         const pt: PrintType = switch (l) {
             .debug, .info => .log,
             .warn => .warn,
             .err => .err,
         };
-        while (true) {
-            wasm_printer.buf[wasm_printer.pos] = @intCast(@intFromEnum(pt));
-            var num_bytes: u32 = 0;
-            wasm_printer.write_ctr = &num_bytes;
-            const write_n = wasm_printer.pos + 1;
-            wasm_printer.buf[write_n] = 0;
-            wasm_printer.buf[write_n + 1] = 0;
-            wasm_printer.pos += 3;
-            if (std.fmt.format(wasm_printer.writer(), format, args)) {
-                wasm_printer.buf[0] += 1;
-                wasm_printer.buf[write_n] = @intCast(num_bytes & 0x00FF);
-                wasm_printer.buf[write_n + 1] = @intCast((num_bytes & 0xFF00) >> 8);
-                if (wasm_printer.pos >= PrintBufferAutoFlushBytes) FlushPrint(false);
-                break;
-            } else |err| {
-                switch (err) {
-                    error.NeedsFlush => {
-                        wasm_printer.flush_finished();
-                    },
-                    error.TooFull => {
-                        wasm_printer.buf[0] += 1;
-                        wasm_printer.buf[write_n] = @intCast(num_bytes & 0x00FF);
-                        wasm_printer.buf[write_n + 1] = @intCast((num_bytes & 0xFF00) >> 8);
-                        FlushPrint(true);
-                        return;
-                    },
-                }
-            }
-        }
+        wasm_printer.init_message(pt);
+        if (wasm_printer.writer.print(format, args)) {
+            wasm_printer.end_message();
+        } else |_| unreachable;
     }
 };
 const WasmPrinter = struct {
-    const WriteError = error{ TooFull, NeedsFlush };
-    const Writer = std.io.Writer(*WasmPrinter, WasmPrinter.WriteError, WasmPrinter.write);
-    write_ctr: ?*u32 = null, //Used for write to write the total number of bytes.
-    pos: usize = 1,
-    buf: PrintBufferT = undefined,
-    fn init() WasmPrinter {
-        var wp: WasmPrinter = .{};
-        wp.buf[0] = 0; //0th byte represents the number of messages to be added to js console print.
-        return wp;
+    use_pt: PrintType,
+    old_end: usize,
+    write_n: usize,
+    writer: std.Io.Writer,
+    fn init(buf: []u8) WasmPrinter {
+        return .{
+            .use_pt = .log,
+            .old_end = 0,
+            .write_n = 0,
+            .writer = .{
+                .buffer = buf,
+                .end = 1, //0th byte represents the number of messages to be added to js console print.
+                .vtable = &.{
+                    .drain = drain,
+                    .flush = flush_to_js,
+                },
+            },
+        };
     }
-    /// Copied from std std.io.BufferedWriter.
-    fn write(self: *@This(), bytes: []const u8) WriteError!usize {
-        if (self.pos + bytes.len > self.buf.len) { //Message too long ( Over PrintBufferMax() )
-            @memcpy(self.buf[self.pos..], bytes[0 .. self.buf.len - self.pos]);
-            self.write_ctr.?.* += @intCast(bytes.len - self.pos);
-            self.pos = self.buf.len;
-            return WriteError.TooFull;
+    fn init_message(wp: *WasmPrinter, pt: PrintType) void {
+        wp.use_pt = pt;
+        wp.writer.buffer[wp.writer.end] = @intCast(@intFromEnum(pt));
+        wp.write_n = wp.writer.end + 1;
+        wp.writer.buffer[wp.write_n] = 0;
+        wp.writer.buffer[wp.write_n + 1] = 0;
+        wp.writer.end += 3;
+        wp.old_end = wp.writer.end;
+    }
+    fn end_message(wp: *WasmPrinter) void {
+        wp.writer.buffer[0] += 1;
+        const end_diff: u32 = @truncate(wp.writer.end - wp.old_end);
+        wp.writer.buffer[wp.write_n] = @intCast(end_diff & 0x00FF);
+        wp.writer.buffer[wp.write_n + 1] = @intCast((end_diff & 0xFF00) >> 8);
+        if (wp.writer.end >= PrintBufferAutoFlushBytes) FlushPrint(false);
+    }
+    ///TODO: Check if drain works as intended.
+    fn drain(w: *std.Io.Writer, data: []const []const u8, splat: usize) std.Io.Writer.Error!usize {
+        const wp: *WasmPrinter = @fieldParentPtr("writer", w);
+        if (data.len == 0) return 0;
+        var total_bytes: usize = 0;
+        for (data[0 .. data.len - 1]) |bytes| {
+            try wp.write_bytes(bytes);
+            total_bytes += @min(bytes.len, w.buffer.len);
         }
-        @memcpy(self.buf[self.pos..(self.pos + bytes.len)], bytes);
-        self.write_ctr.?.* += @intCast(bytes.len);
-        self.pos += bytes.len;
-        return bytes.len;
+        const pattern = data[data.len - 1];
+        switch (pattern.len) {
+            0 => {},
+            1 => {
+                var rem = splat;
+                while (rem > 0) {
+                    const dest = w.buffer[w.end..];
+                    if (dest.len == 0) {
+                        try w.flush();
+                        continue;
+                    }
+                    const len = @min(dest.len, rem);
+                    @memset(dest[0..len], pattern[0]);
+                    w.end += len;
+                    total_bytes += len;
+                    rem -= len;
+                }
+            },
+            else => {
+                var rem = splat;
+                while (rem > 0) {
+                    const dest = w.buffer[w.end..];
+                    if (dest.len == 0) {
+                        try w.flush();
+                        continue;
+                    }
+                    const len = @min(dest.len, pattern.len);
+                    @memcpy(dest[0..len], pattern[0..len]);
+                    w.end += len;
+                    total_bytes += len;
+                    if (len < pattern.len) {
+                        try w.flush();
+                        continue;
+                    }
+                    rem -= 1;
+                }
+            },
+        }
+        return total_bytes;
     }
-    fn flush_finished(self: *@This()) void {
-        const old_pos = self.pos;
-        while (self.buf[self.pos - 1] != '\n') : (self.pos -= 1) { //Exclude unfinished \n terminated strings if possible.
-            if (self.pos == 1) {
-                self.pos = old_pos;
+    fn write_bytes(wp: *WasmPrinter, bytes: []const u8) std.Io.Writer.Error!void {
+        var rem_bytes = bytes;
+        if (bytes.len > wp.writer.buffer.len) { //Truncate if too many bytes from message.
+            const trunc_buf = bytes[0..wp.writer.buffer.len];
+            @memcpy(wp.writer.buffer[0..trunc_buf.len], trunc_buf);
+            wp.writer.end = trunc_buf.len;
+            wp.end_message();
+            FlushPrint(true);
+            wp.init_message(wp.use_pt);
+            return;
+        }
+        while (rem_bytes.len > 0) { //If buffer will be full after bytes message.
+            const dest = wp.writer.buffer[wp.writer.end..];
+            const len = @min(rem_bytes.len, dest.len);
+            @memcpy(dest[0..len], rem_bytes[0..len]);
+            wp.writer.end += len;
+            rem_bytes = rem_bytes[len..];
+            if (rem_bytes.len > 0) { //Set new message after flushing the full buffer.
+                wp.end_message();
+                try flush_to_js(&wp.writer);
+                wp.init_message(wp.use_pt);
+            }
+        }
+    }
+    fn flush_to_js(w: *std.Io.Writer) std.Io.Writer.Error!void {
+        const old_end = w.end;
+        while (w.buffer[w.end - 1] != '\n') : (w.end -= 1) { //Exclude unfinished \n terminated strings if possible.
+            if (w.end == 1) {
+                w.end = old_end;
                 break;
             }
         }
         FlushPrint(false);
     }
     fn reset(self: *@This()) void {
-        self.pos = 1;
-        self.buf[0] = 0;
-    }
-    fn writer(self: *@This()) Writer {
-        return .{ .context = self };
+        self.writer.end = 1;
+        self.writer.buffer[0] = 0;
     }
 };
 pub fn WasmError(err: anyerror) noreturn {

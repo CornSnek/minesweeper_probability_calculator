@@ -8,6 +8,7 @@ const big_number = @import("big_number.zig");
 const SolutionBitsRange = @import("minesweeper.zig").SolutionBits.SolutionBitsRange;
 const MineFrequencyConvolute = @import("minesweeper.zig").MinesweeperMatrix.MineFrequencyConvolute;
 const PlayProbabilityStatus = @import("shared.zig").PlayProbabilityStatus;
+const FStruct = @import("shared.zig").FStruct;
 var error_slice: StringSlice = .empty;
 fn add_error_slice(err_msg: []u8) void {
     wasm_jsalloc.slice_to_js(err_msg) catch {
@@ -27,13 +28,13 @@ pub export fn GetMineBoard() [*c]StringSlice {
     mine_board_ext = .{ .ptr = mine_board.items.ptr, .len = mine_board.items.len };
     return &mine_board_ext;
 }
-var left_click_board: std.ArrayListUnmanaged(u8) = .{}; //TODO
+var left_click_board: std.ArrayListUnmanaged(u8) = .{};
 var lcb_ext: StringSlice = undefined;
 pub export fn GetLeftClickBoard() [*c]StringSlice {
     lcb_ext = .{ .ptr = left_click_board.items.ptr, .len = left_click_board.items.len };
     return &lcb_ext;
 }
-var right_click_board: std.ArrayListUnmanaged(u8) = .{}; //TODO
+var right_click_board: std.ArrayListUnmanaged(u8) = .{};
 var rcb_ext: StringSlice = undefined;
 pub export fn GetRightClickBoard() [*c]StringSlice {
     rcb_ext = .{ .ptr = right_click_board.items.ptr, .len = right_click_board.items.len };
@@ -657,6 +658,8 @@ pub export fn CancelProbability() void { //If .running, wait until it becomes .i
     @atomicStore(PlayProbabilityStatus, &PPStatus, .cancel, .release);
     while (@atomicLoad(PlayProbabilityStatus, &PPStatus, .acquire) == .cancel) {}
 }
+var f_struct: FStruct = .{ .f = [1]usize{0} ** 10, .t = 0 };
+extern fn ReturnProbabilityStats([*c]FStruct, usize) void;
 pub export fn ProbabilityClickTile(global_mine_count: isize, include_mine_flags: bool, tile_i: usize) void {
     std.debug.assert(cm.is_probability_calculated());
     clear_board();
@@ -664,7 +667,11 @@ pub export fn ProbabilityClickTile(global_mine_count: isize, include_mine_flags:
     if (bd_o) |bd| {
         //Counts from 0 number tile (0), 1 number tile (1), 2 number tile (2), ... 8 number tile (8), and mine tile (9).
         var f_table: [10]usize = [1]usize{0} ** 10;
-        var f_total: usize = 0;
+        var f_total: usize = 1;
+        f_struct.f = f_table;
+        f_struct.t = f_total;
+        ReturnProbabilityStats(&f_struct, tile_i); //Clear current board.
+        f_total = 0;
         var adj_bb: [8]ByteBit = undefined;
         const adj_slice = get_adj_tiles_bb(&adj_bb, tile_i, cm.map_parser.?.width, cm.map_parser.?.height);
         const this_bb: ByteBit = .init_i(tile_i);
@@ -684,13 +691,9 @@ pub export fn ProbabilityClickTile(global_mine_count: isize, include_mine_flags:
             f_total += 1;
             if (@atomicLoad(bool, &root.CalculateStatus, .acquire)) {
                 @atomicStore(bool, &root.CalculateStatus, false, .release);
-                std.log.warn("[ ", .{});
-                for (f_table) |f| {
-                    std.log.warn("{d: >9.5}%, ", .{100.0 * @as(f32, @floatFromInt(f)) / @as(f32, @floatFromInt(f_total))});
-                }
-                std.log.warn(" ]\n", .{});
-                std.log.warn("{any} Total: {}\n", .{ f_table, f_total });
-                @import("wasm_print.zig").FlushPrint(false);
+                f_struct.f = f_table;
+                f_struct.t = f_total;
+                ReturnProbabilityStats(&f_struct, tile_i);
             }
         }
     } else wasm_jsalloc.WasmFree(error_slice.ptr);

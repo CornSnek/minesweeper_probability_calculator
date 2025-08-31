@@ -86,7 +86,16 @@
       </div>
     </div>
   </div>
-  <div id="config" class="window no-highlight" data-left="0" data-top="1000000" data-dragx="0" data-dragy="0">
+  <div id="prob-window" class="window no-highlight window-hide" style="width: 500px; height: 230px; left: calc(100% - 500px); top: calc(100% - 230px);" data-left="0" data-top="0" data-dragx="0" data-dragy="0">
+    <div class="window-header"><div>Probability Bar Graph</div><div><strong id="prob-window-close" class="badge window-close">Close</strong></div></div>
+    <div>
+      <div id="prob-desc"></div>
+      <label for="prob-exclude-mine">Exclude M</label>
+      <input type="checkbox" id="prob-exclude-mine">
+    </div>
+    <div id="prob-chart" class="pbar-chart"></div>
+  </div>
+  <div id="config" class="window no-highlight" style="width: 500px; height: 200px; left: 0; top: calc(100% - 200px);" data-left="0" data-top="1000000" data-dragx="0" data-dragy="0">
     <div class="window-header"><div>Configurations</div><div><strong id="config-window-close" class="badge window-close">Close</strong></div></div>
     <div>
       <label for="columns-num">Columns</label>

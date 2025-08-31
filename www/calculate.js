@@ -1,4 +1,4 @@
-import { PrintType } from './wasm_to_js.js'
+import { PrintType, FStruct } from './wasm_to_js.js'
 let WasmMemory = null;
 let WasmObj = null;
 let WasmExports = null;
@@ -41,7 +41,7 @@ async function onmessage_f(e) {
     } else if (e.data[0] = 'm') {
         WasmMemory = e.data[1];
         const wasm_obj = await WebAssembly.instantiateStreaming(fetch('./minesweeper_calculator.wasm'), {
-            env: { memory: WasmMemory, JSPrint, ClearResults, AppendResults, FinalizeResults, SetSubsystemNumber, SetTimeoutProgress },
+            env: { memory: WasmMemory, JSPrint, ClearResults, AppendResults, FinalizeResults, SetSubsystemNumber, SetTimeoutProgress, ReturnProbabilityStats },
         });
         WasmObj = wasm_obj;
         WasmExports = wasm_obj.instance.exports;
@@ -101,6 +101,10 @@ function AppendResults(str_ptr, str_len) {
 }
 function FinalizeResults() {
     postMessage(['FinalizeResults']);
+}
+function ReturnProbabilityStats(ptr, tile_i) {
+    const arr = new Uint32Array(WasmMemory.buffer, ptr, FStruct.$size / 4);
+    postMessage(['SendProbabilityStats', arr, tile_i]);
 }
 //Because memory is shared, WasmMemory.buffer (As a SharedArrayBuffer) requires more code to copy for TextDecoder to work.
 function copy_shared(addr, len) {
