@@ -28,7 +28,7 @@
         <a href="#" id="close-play-body" class="close-options-panel"><strong class="badge">Close</strong></a>
       </div>
       <div class="play-element">
-        <button type="button" id="play-upload-current-board">Upload Current Board</button>
+        <button type="button" id="play-upload-current-board">Upload Board</button>
         <button type="button" id="play-copy-board">Copy Board</button>
         <label for="play-gamemode">Game Mode</label>
         <select id="play-gamemode">
@@ -39,10 +39,12 @@
         <label for="play-seed">Random Seed</label> <input id="play-seed" type="number" value="0" step="1" disabled>
         <label for="play-seed-manual">Manual Seed</label>
         <input type="checkbox" id="play-seed-manual">
-        <textarea id="play-board-data" cols="180"></textarea>
+        <button type="button" id="show-board-seed">Show Board Seed</button>
+        <button type="button" id="play-show-config">Show Configurations</button>
         <br>
         <button type="button" id="play-new-game">New Game</button>
-        <button type="button" id="play-new-game-with-board">New Game With Board</button>
+        <button type="button" id="play-new-game-with-seed">New Game From Seed</button>
+        <button type="button" id="play-new-game-with-board">New Game From Upload</button>
         <br>
         Mines Left: <output id="play-mines-left">0</output>
         Timer: <output id="play-timer">000</output>
@@ -84,6 +86,13 @@
           <button type="button" id="parse-screenshot" disabled>Parse Screenshot</button>
           <button type="button" id="cancel-parse-screenshot">Cancel</button>
       </div>
+    </div>
+  </div>
+  <div id="board-seed-window" class="window no-highlight window-hide" style="width: 800px; height:200px; left: calc(100% - 800px); top: calc(100% - 200px);" data-left="0" data-top="0" data-dragx="0" data-dragy="0">
+    <div class="window-header"><div>Board Seed</div><div><strong id="board-seed-close" class="badge window-close">Close</strong></div></div>
+    <div>
+        <textarea id="play-board-data" cols="95" rows="5" resizable="false"></textarea>
+        <div>Format: (Width)x(Height) that ends with a comma. The parameters include an equal sign after the parameter, and every 8 tiles are encoded as 2 hexadecimal digits. <b>m</b> represents the mines, <b>l</b> represents the tiles that will be revealed, and <b>r</b> represents the tiles that will be flagged.</div>
     </div>
   </div>
   <div id="prob-window" class="window no-highlight window-hide" style="width: 500px; height: 230px; left: calc(100% - 500px); top: calc(100% - 230px);" data-left="0" data-top="0" data-dragx="0" data-dragy="0">

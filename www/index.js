@@ -142,6 +142,9 @@ async function init() {
     grid_body = document.getElementById('grid-body');
     config = document.getElementById('config');
     config_window_close = document.getElementById('config-window-close');
+    board_seed_close = document.getElementById('board-seed-close');
+    board_seed_window = document.getElementById('board-seed-window');
+    show_board_seed = document.getElementById('show-board-seed');
     show_config_window = document.getElementById('show-config-window');
     tiles_palette = document.getElementById('tiles-palette');
     tile_description = document.getElementById('tile-description');
@@ -165,8 +168,10 @@ async function init() {
     play_seed = document.getElementById('play-seed');
     play_status = document.getElementById('play-status');
     play_new_game = document.getElementById('play-new-game');
+    play_new_game_with_seed = document.getElementById('play-new-game-with-seed');
     play_new_game_with_board = document.getElementById('play-new-game-with-board');
     play_seed_manual = document.getElementById('play-seed-manual');
+    play_show_config = document.getElementById('play-show-config');
     play_gamemode = document.getElementById('play-gamemode');
     calculate_probability = document.getElementById('calculate-probability');
     clear_probability_button = document.getElementById('clear-probability-button');
@@ -353,6 +358,18 @@ async function init() {
     };
     config_window_close.onclick = hide_config_window_f;
     prob_window_close.onclick = hide_prob_f;
+    board_seed_close.onclick = e => {
+        board_seed_window.classList.add('window-hide');
+    };
+    show_board_seed.onclick = e => {
+        board_seed_window.classList.remove('window-hide');
+    };
+    play_show_config.onclick = e => {
+        if (config.classList.contains('window-hide'))
+            show_config_window_f(e);
+        else
+            hide_config_window_f(e);
+    };
     window.addEventListener('resize', e => {
         const tab = document.querySelector('.options-gui.panel-show');
         if (tab !== null) {
@@ -434,9 +451,16 @@ async function init() {
                 play_board_data.value = '';
                 play_obj.init_create_board_empty(BigInt(Date.now()));
             } else {
-                play_obj.init_create_custom_board_seed(play_board_data.value);
+                play_obj.init_create_board_empty(parseInt(play_seed.value));
             }
 
+        }
+    };
+    play_new_game_with_seed.onclick = e => {
+        if (web_state === STATE_PLAY) {
+            hide_prob_f(e);
+            play_seed_manual.disabled = false;
+            play_obj.init_create_custom_board_seed(play_board_data.value);
         }
     };
     play_new_game_with_board.onclick = e => {
@@ -447,22 +471,27 @@ async function init() {
     };
     play_gamemode.onchange = e => {
         play_seed_manual.disabled = false;
+        play_obj.null_game();
         switch (play_gamemode.value) {
             case 'Standard':
                 flash_message(FLASH_SUCCESS, 'Standard mode causes a game over after revealing a mine.', 5000);
                 play_new_game.disabled = false;
+                play_new_game_with_seed.disabled = false;
                 break;
             case 'Sandbox':
                 flash_message(FLASH_SUCCESS, 'Sandbox mode allows playing the game after revealing a mine. It also shows any wrong flags after clicking a mine.', 5000);
                 play_new_game.disabled = false;
+                play_new_game_with_seed.disabled = false;
                 break;
             case 'Probability':
-                flash_message(FLASH_SUCCESS, 'Probability mode calculates the statistics of one tile being a specific tile.', 5000);
+                flash_message(FLASH_SUCCESS, 'Probability mode calculates the statistics of one tile being a specific tile. \'Upload Board\' is required first.', 5000);
                 play_new_game.disabled = true;
+                play_new_game_with_seed.disabled = true;
                 break;
         }
     };
     play_new_game.disabled = play_gamemode.value == 'Probability';
+    play_new_game_with_seed.disabled = play_gamemode.value == 'Probability';
     prob_exclude_mine.onchange = e => {
         if (prob_exclude_mine.checked) {
             flash_message(FLASH_SUCCESS, 'Percentage is calculated excluding mine (M) frequency.', 5000);
@@ -510,8 +539,6 @@ async function init() {
     flash_body.onclick = hide_flash;
     select_probability.onchange = e => {
         const prob_type = e.target.value;
-        gm_count.disabled = prob_type !== 'Global';
-        include_flags.disabled = prob_type !== 'Global';
         flash_message(FLASH_SUCCESS, (prob_type !== 'Global') ? 'Local shows only the probability for adjacent tiles' : 'Global shows the probability of the whole board, where Mine Count is considered', 5000);
     };
     include_flags.onchange = e => flash_message(FLASH_SUCCESS, e.target.checked ? 'Flags and mines are counted in Mine Count to consider the total number of mines left + flags + mines in a board.' : 'Flags and mines are not counted in Mine Count to consider only the number of mines left.', 5000);
@@ -530,17 +557,11 @@ async function init() {
         upload_body.style.display = 'none';
         web_state = STATE_IDLE;
     }
-    gm_count.disabled = select_probability.value !== 'Global';
-    include_flags.disabled = select_probability.value !== 'Global';
     console.log('Waiting for KaTeX module...');
     wait_katex();
 }
 function show_play_current_board_f(e) {
     if (web_state == STATE_IDLE) {
-        if (select_probability.value !== 'Global') {
-            flash_message(FLASH_ERROR, 'Play Current Board requires Global Probability and Mine Count enabled in Configurations', 5000);
-            return;
-        }
         deselect_tiles_f();
         hide_any_right_panels(e);
         play_body.style.display = 'initial';
@@ -1920,6 +1941,9 @@ let prob_desc;
 let prob_exclude_mine;
 let prob_window;
 let prob_window_close;
+let board_seed_window;
+let board_seed_close;
+let show_board_seed;
 function hide_prob_f(e) {
     WasmExports.CancelProbability();
     clearInterval(play_obj.probability_interval);
@@ -1985,7 +2009,9 @@ let play_timer;
 let play_seed;
 let play_status;
 let play_new_game;
+let play_new_game_with_seed;
 let play_new_game_with_board;
+let play_show_config;
 let play_seed_manual;
 let play_gamemode;
 class Play {
@@ -2523,7 +2549,7 @@ class Play {
     init_create_preset(e) {
         play_seed_manual.disabled = false;
         if (!WasmExports.HasUploaded()) {
-            flash_message(FLASH_ERROR, 'A Board has not been uploaded with Upload Current Board.', 5000);
+            flash_message(FLASH_ERROR, 'A Board has not been uploaded using \'Upload Board\'.', 5000);
             this.state = Play.STATE_WASM_ERROR;
             return;
         }
@@ -2544,6 +2570,10 @@ class Play {
     init_create_custom_board_seed(seed_str) {
         const seed_te = TE.encode(seed_str);
         const len = seed_te.byteLength;
+        if (len == 0) {
+            flash_message(FLASH_ERROR, 'Board Seed is empty.');
+            return;
+        }
         const alloc_ptr = WasmExports.WasmAlloc(len);
         const mem_view = new Uint8Array(WasmMemory.buffer, alloc_ptr, len);
         mem_view.set(seed_te, 0);
@@ -2559,6 +2589,7 @@ class Play {
         play_board.style.setProperty('--num-columns', columns);
         this.init_create_board(columns, rows, parseInt(gm_count.value));
         this.reset_board(Play.state_probability_else(Play.STATE_BEGIN_PLAY));
+        seed = BigInt(seed);
         this.seed = seed;
         play_seed.value = seed;
         WasmExports.InitRNGSeed(seed);
