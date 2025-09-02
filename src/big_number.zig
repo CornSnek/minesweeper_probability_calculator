@@ -1,9 +1,9 @@
 const std = @import("std");
 ///Arbitrary big number in little-endian.
 pub const BigUInt = struct {
-    bytes: std.ArrayListUnmanaged(u32),
+    bytes: std.ArrayList(u32),
     pub fn init(allocator: std.mem.Allocator, init_num: u32) !BigUInt {
-        var bytes: std.ArrayListUnmanaged(u32) = .empty;
+        var bytes: std.ArrayList(u32) = .empty;
         try bytes.append(allocator, init_num);
         return .{ .bytes = bytes };
     }

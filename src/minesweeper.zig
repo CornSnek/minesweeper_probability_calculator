@@ -126,7 +126,7 @@ pub const MapParser = struct {
         parse_error,
         invalid_char: usize,
     };
-    map: std.ArrayListUnmanaged(MsType) = .empty,
+    map: std.ArrayList(MsType) = .empty,
     width: usize,
     height: usize,
     pub fn init(allocator: std.mem.Allocator, width: usize, height: usize) InitStatus {
@@ -293,7 +293,7 @@ pub const MapParser = struct {
         return mm;
     }
     pub fn as_str(self: MapParser, allocator: std.mem.Allocator) ![]u8 {
-        var str_list: std.ArrayListUnmanaged(u8) = .empty;
+        var str_list: std.ArrayList(u8) = .empty;
         defer str_list.deinit(allocator);
         const width = self.width;
         var width_counter: usize = 0;
@@ -313,7 +313,7 @@ pub const MapParser = struct {
 pub const TileMap = struct {
     pub const LocationToID = std.AutoHashMapUnmanaged(TileLocation, usize);
     ltoid: LocationToID = .empty,
-    idtol: std.ArrayListUnmanaged(TileLocation) = .empty,
+    idtol: std.ArrayList(TileLocation) = .empty,
     pub const empty: TileMap = .{};
     ///For js to interact with the .idtol array.
     pub const IDToLocationExtern = extern struct {
@@ -355,8 +355,8 @@ pub const SolutionBits = struct {
         begin: usize,
         end: usize,
     };
-    data: std.ArrayListUnmanaged(u32),
-    metadata: std.ArrayListUnmanaged(SolutionBitsRange),
+    data: std.ArrayList(u32),
+    metadata: std.ArrayList(SolutionBitsRange),
     number_bytes: u32,
     pub const empty: SolutionBits = .{ .data = .empty, .metadata = .empty, .number_bytes = 0 };
     pub const SolutionBitsExtern = extern struct {
@@ -432,7 +432,7 @@ pub const SolutionBits = struct {
 };
 /// All LinearCombination must have .alloc_all true and valid order (.id from ascending order with exactly one null).
 pub const MinesweeperMatrix = struct {
-    lcs: std.ArrayListUnmanaged(LinearCombination),
+    lcs: std.ArrayList(LinearCombination),
     tm: TileMap,
     sb: SolutionBits,
     pub const empty: MinesweeperMatrix = .{ .lcs = .empty, .tm = .empty, .sb = .empty };
@@ -441,7 +441,7 @@ pub const MinesweeperMatrix = struct {
         if (!lc.valid_order()) return error.MustBeValidLC;
         try self.lcs.append(allocator, lc);
     }
-    pub const ValuesList = std.ArrayListUnmanaged(i32);
+    pub const ValuesList = std.ArrayList(i32);
     pub const LocationCount = extern struct {
         x: usize,
         y: usize,
@@ -468,7 +468,7 @@ pub const MinesweeperMatrix = struct {
         };
     };
     pub const MineFrequencyConvolute = struct {
-        mds: std.ArrayListUnmanaged(usize), //usize is the index of the MineFrequency
+        mds: std.ArrayList(usize), //usize is the index of the MineFrequency
         m: usize,
         f: big_number.BigUInt,
         pub fn init(allocator: std.mem.Allocator) !MineFrequencyConvolute {
@@ -508,7 +508,7 @@ pub const MinesweeperMatrix = struct {
             total_mf_map: *MineFrequencyMap,
             tm: TileMap,
             valuesl: *ValuesList,
-            location_mf_map: *std.ArrayListUnmanaged(MineFrequencyMap),
+            location_mf_map: *std.ArrayList(MineFrequencyMap),
         ) !ProbabilityList {
             std.debug.assert(tm.idtol.items.len == valuesl.items.len);
             var pl: ProbabilityList = undefined;
@@ -578,7 +578,7 @@ pub const MinesweeperMatrix = struct {
             id: u31,
             i: u32 = 0,
         };
-        var subsystem_sets: std.AutoHashMapUnmanaged(u31, std.ArrayListUnmanaged(usize)) = .empty;
+        var subsystem_sets: std.AutoHashMapUnmanaged(u31, std.ArrayList(usize)) = .empty;
         defer {
             var sss_it = subsystem_sets.iterator();
             while (sss_it.next()) |kv| {
@@ -595,7 +595,7 @@ pub const MinesweeperMatrix = struct {
                 } else continue;
             }
             var lowest_id: u31 = lc.head.?.id.?;
-            var id_counters: std.ArrayListUnmanaged(IDCounter) = .empty;
+            var id_counters: std.ArrayList(IDCounter) = .empty;
             defer id_counters.deinit(allocator);
             var visited: std.AutoHashMapUnmanaged(u31, void) = .empty;
             defer visited.deinit(allocator);
@@ -738,7 +738,7 @@ pub const MinesweeperMatrix = struct {
         var mines_value_list: ValuesList = .empty;
         defer mines_value_list.deinit(allocator);
         try mines_value_list.appendNTimes(allocator, 0, self.tm.idtol.items.len);
-        var location_mf_map: std.ArrayListUnmanaged(MineFrequencyMap) = .empty;
+        var location_mf_map: std.ArrayList(MineFrequencyMap) = .empty;
         defer {
             for (location_mf_map.items) |*mf|
                 mf.deinit(allocator);
@@ -748,7 +748,7 @@ pub const MinesweeperMatrix = struct {
         var total_mf_map: MineFrequencyMap = .empty;
         defer total_mf_map.deinit(allocator);
         if (self.tm.idtol.items.len != 0) {
-            var free_map: std.ArrayListUnmanaged(u32) = .empty;
+            var free_map: std.ArrayList(u32) = .empty;
             defer free_map.deinit(allocator);
             try free_map.ensureTotalCapacityPrecise(allocator, self.tm.idtol.items.len);
             for (0..self.tm.idtol.items.len) |i| free_map.appendAssumeCapacity(@truncate(i));
@@ -818,7 +818,7 @@ pub const MinesweeperMatrix = struct {
                 }
             }
             if (UsingWasm) {
-                var results_str: std.ArrayListUnmanaged(u8) = .empty;
+                var results_str: std.ArrayList(u8) = .empty;
                 defer results_str.deinit(allocator);
                 try results_str.writer(allocator).print("Total valid solutions found for this subsystem: {}<br>", .{total});
                 var begin_range: usize = 0;

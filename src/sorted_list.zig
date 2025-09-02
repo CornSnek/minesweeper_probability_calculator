@@ -16,7 +16,7 @@ pub fn IntTCmp(IntT: type, comptime list_type: SortedIntListType) type {
 pub fn SortedList(comptime T: type, comptime Cmp: anytype) type {
     return struct {
         pub const empty: @This() = .{ .list = .empty };
-        list: std.ArrayListUnmanaged(T),
+        list: std.ArrayList(T),
         pub fn insert_unique(self: *@This(), allocator: std.mem.Allocator, value: T) !bool {
             if (self.list.items.len != 0) {
                 var low_i: usize = 0;

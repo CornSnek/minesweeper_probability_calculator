@@ -22,19 +22,19 @@ var prng: std.Random.Pcg = .init(0);
 pub export fn InitRNGSeed(seed: u64) void {
     prng = .init(seed);
 }
-var mine_board: std.ArrayListUnmanaged(u8) = .{};
+var mine_board: std.ArrayList(u8) = .{};
 var mine_board_ext: StringSlice = undefined;
 pub export fn GetMineBoard() [*c]StringSlice {
     mine_board_ext = .{ .ptr = mine_board.items.ptr, .len = mine_board.items.len };
     return &mine_board_ext;
 }
-var left_click_board: std.ArrayListUnmanaged(u8) = .{};
+var left_click_board: std.ArrayList(u8) = .{};
 var lcb_ext: StringSlice = undefined;
 pub export fn GetLeftClickBoard() [*c]StringSlice {
     lcb_ext = .{ .ptr = left_click_board.items.ptr, .len = left_click_board.items.len };
     return &lcb_ext;
 }
-var right_click_board: std.ArrayListUnmanaged(u8) = .{};
+var right_click_board: std.ArrayList(u8) = .{};
 var rcb_ext: StringSlice = undefined;
 pub export fn GetRightClickBoard() [*c]StringSlice {
     rcb_ext = .{ .ptr = right_click_board.items.ptr, .len = right_click_board.items.len };
@@ -45,7 +45,7 @@ fn clear_board() void {
     left_click_board.clearRetainingCapacity();
     right_click_board.clearRetainingCapacity();
 }
-var mine_seed: std.ArrayListUnmanaged(u8) = .{};
+var mine_seed: std.ArrayList(u8) = .{};
 var mine_seed_ext: StringSlice = undefined;
 pub export fn GetMineSeed() [*c]StringSlice {
     mine_seed_ext = .{ .ptr = mine_seed.items.ptr, .len = mine_seed.items.len };
@@ -221,8 +221,8 @@ fn parse_mine_seed(seed_str: []const u8) ?[]u8 {
     clear_board();
     var state_now: u32 = 1;
     var var_to_use: u8 = undefined;
-    var buf_to_use: *std.ArrayListUnmanaged(u8) = undefined;
-    var str_buf: std.ArrayListUnmanaged(u8) = .empty;
+    var buf_to_use: *std.ArrayList(u8) = undefined;
+    var str_buf: std.ArrayList(u8) = .empty;
     defer str_buf.deinit(wasm_allocator);
     for (seed_str, 0..) |ch, i| {
         state_now = ParseMineRegexStates[state_now].next(ch);
@@ -450,9 +450,9 @@ fn mine_tiles_random(
     num_mines: usize,
     width: usize,
     height: usize,
-) !std.ArrayListUnmanaged(ByteBit) {
+) !std.ArrayList(ByteBit) {
     var tile_ptr: usize = 0;
-    var random_list: std.ArrayListUnmanaged(ByteBit) = .empty;
+    var random_list: std.ArrayList(ByteBit) = .empty;
     errdefer random_list.deinit(allocator);
     try random_list.ensureTotalCapacityPrecise(allocator, num_mines);
     random_list.items.len = num_mines;
@@ -487,18 +487,18 @@ fn create_preset_board(bd: BoardData) !void {
             left_click_board.items[bb.byte] |= bb.bit;
     }
     var mines_left = bd.adj_mine_count;
-    var i_array: std.ArrayListUnmanaged(usize) = .empty;
+    var i_array: std.ArrayList(usize) = .empty;
     defer i_array.deinit(wasm_allocator);
     const ss_len = cm.mm_subsystems.len;
     //Index of conv_ctr is SubSystem index, and .c is MineFrequency index (.m is maximum per SubSystem).
-    var conv_ctr: std.ArrayListUnmanaged(struct { c: usize = 0, m: usize }) = .empty;
+    var conv_ctr: std.ArrayList(struct { c: usize = 0, m: usize }) = .empty;
     defer conv_ctr.deinit(wasm_allocator);
     for (0..ss_len) |ss_i| {
         const calc = &cm.calculate_array.ptr[ss_i];
         const mf_len = calc.pl.mf_len;
         try conv_ctr.append(wasm_allocator, .{ .m = mf_len });
     }
-    var mfcs: std.ArrayListUnmanaged(MineFrequencyConvolute) = .empty;
+    var mfcs: std.ArrayList(MineFrequencyConvolute) = .empty;
     defer {
         for (mfcs.items) |*m|
             m.deinit(wasm_allocator);

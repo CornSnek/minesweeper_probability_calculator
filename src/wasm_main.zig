@@ -129,8 +129,8 @@ fn stringify_matrix(
     allocator: std.mem.Allocator,
     mm: *const minesweeper.MinesweeperMatrix,
     show_ids: bool,
-) !std.ArrayListUnmanaged(u8) {
-    var results: std.ArrayListUnmanaged(u8) = .empty;
+) !std.ArrayList(u8) {
+    var results: std.ArrayList(u8) = .empty;
     errdefer results.deinit(allocator);
     if (mm.lcs.items.len == 0) try results.writer(allocator).writeAll("\\(empty\\)<br><br>");
     for (mm.lcs.items) |lc| {
@@ -230,7 +230,7 @@ export fn CalculateProbability() [*c]shared.CalculateArray {
             const sm = "This matrix can be partitioned into the following subsystems:<br><br>";
             AppendResults(sm, sm.len);
             for (cm.mm_subsystems, 0..) |sub_mm, ss_i| {
-                var alloc_sm: std.ArrayListUnmanaged(u8) = .empty;
+                var alloc_sm: std.ArrayList(u8) = .empty;
                 defer alloc_sm.deinit(wasm_allocator);
                 alloc_sm.writer(wasm_allocator).print("Subsystem #{}<br>", .{ss_i}) catch {
                     cm.calculate_array = .init_error(.alloc_error);
@@ -263,7 +263,7 @@ export fn CalculateProbability() [*c]shared.CalculateArray {
             SetSubsystemNumber(pl_list.len);
         }
         for (0..cm.mm_subsystems.len) |i| {
-            var alloc_sm: std.ArrayListUnmanaged(u8) = .empty;
+            var alloc_sm: std.ArrayList(u8) = .empty;
             defer alloc_sm.deinit(wasm_allocator);
             alloc_sm.writer(wasm_allocator).print("RREF Subsystem #{}<br>", .{i}) catch {
                 cm.calculate_array = .init_error(.alloc_error);
@@ -283,7 +283,7 @@ export fn CalculateProbability() [*c]shared.CalculateArray {
                 AppendResults(sm, sm.len);
                 continue;
             };
-            var this_mm_str: std.ArrayListUnmanaged(u8) = stringify_matrix(wasm_allocator, this_mm, false) catch .empty;
+            var this_mm_str: std.ArrayList(u8) = stringify_matrix(wasm_allocator, this_mm, false) catch .empty;
             defer this_mm_str.deinit(wasm_allocator);
             if (pl.total != 0) {
                 pl_list[i] = .{
