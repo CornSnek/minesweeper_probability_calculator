@@ -7,7 +7,11 @@ pub const BigUInt = struct {
         try bytes.append(allocator, init_num);
         return .{ .bytes = bytes };
     }
-    pub fn init_random(allocator: std.mem.Allocator, random: std.Random, max: BigUInt) !BigUInt {
+    pub fn reset(self: *BigUInt, reset_num: u32) void {
+        self.bytes.items[0] = reset_num;
+        self.bytes.items.len = 1;
+    }
+    pub fn init_random(allocator: std.mem.Allocator, random: std.Random, max: *const BigUInt) !BigUInt {
         var result: BigUInt = try init(allocator, 0);
         errdefer result.deinit(allocator);
         try result.pad(allocator, max.bytes.items.len);
@@ -38,18 +42,31 @@ pub const BigUInt = struct {
             }
         }
     }
-    pub fn add(self: *BigUInt, allocator: std.mem.Allocator, by_bui: BigUInt) !void {
+    pub fn add(self: *BigUInt, allocator: std.mem.Allocator, by_bui: *const BigUInt) !void {
         if (by_bui.bytes.items.len > self.bytes.items.len)
             try self.bytes.appendNTimes(allocator, 0, by_bui.bytes.items.len - self.bytes.items.len);
         var carry: u1 = 0;
         for (0..self.bytes.items.len) |i| {
             self.bytes.items[i], carry = @addWithOverflow(self.bytes.items[i], carry);
-            const by_bui_byte = if (i < by_bui.bytes.items.len) by_bui.bytes.items[i] else 0; //0 if out of bounds. self may be repeated bytes of FF so carry will keep adding...
+            const by_bui_byte = if (i < by_bui.bytes.items.len) by_bui.bytes.items[i] else 0; //0 if out of bounds.
             self.bytes.items[i], const carry2 = @addWithOverflow(self.bytes.items[i], by_bui_byte);
-            carry |= carry2; //Case 1: carry made it overflow from 0xFF to 0x00, making carry2 always 0. Case 2: carry did not overflow, and carry2 might
+            carry |= carry2; //Case 1: Adding carry made it overflow. Case 2: Adding carry did not overflow, but carry2 might
         }
         if (carry == 1)
             try self.bytes.append(allocator, 1);
+    }
+    ///bool would be true if self is greater. Otherwise self is wrapped subtracted and returns false. Code is similar to add.
+    pub fn sub(self: *BigUInt, allocator: std.mem.Allocator, by_bui: *const BigUInt) !bool {
+        if (by_bui.bytes.items.len > self.bytes.items.len)
+            try self.bytes.appendNTimes(allocator, 0, by_bui.bytes.items.len - self.bytes.items.len);
+        var carry: u1 = 0;
+        for (0..self.bytes.items.len) |i| {
+            self.bytes.items[i], carry = @subWithOverflow(self.bytes.items[i], carry);
+            const by_bui_byte = if (i < by_bui.bytes.items.len) by_bui.bytes.items[i] else 0;
+            self.bytes.items[i], const carry2 = @subWithOverflow(self.bytes.items[i], by_bui_byte);
+            carry |= carry2;
+        }
+        return carry == 0;
     }
     pub fn multiply_byte(self: *BigUInt, allocator: std.mem.Allocator, by: u32) !void {
         var carry: u32 = 0;
@@ -88,7 +105,7 @@ pub const BigUInt = struct {
             }
         }
     };
-    pub fn multiply(self: *BigUInt, allocator: std.mem.Allocator, by_bui: BigUInt) !void {
+    pub fn multiply(self: *BigUInt, allocator: std.mem.Allocator, by_bui: *const BigUInt) !void {
         var mr: MultiplyResult = .{ .init = try self.clone(allocator) };
         errdefer mr.deinit(allocator);
         try mr.init.multiply_byte(allocator, by_bui.bytes.items[0]);
@@ -101,7 +118,7 @@ pub const BigUInt = struct {
                     try mr.sum_second[1].multiply_byte(allocator, by_bui_byte);
                 },
                 .sum_second => |*bui_arr| {
-                    try bui_arr[1].add(allocator, bui_arr[0]);
+                    try bui_arr[1].add(allocator, &bui_arr[0]);
                     bui_arr[0].bytes.clearRetainingCapacity();
                     try bui_arr[0].bytes.appendSlice(allocator, self.bytes.items);
                     try bui_arr[0].shift_bytes_left(allocator, i);
@@ -109,7 +126,7 @@ pub const BigUInt = struct {
                     mr = .{ .sum_first = bui_arr.* };
                 },
                 .sum_first => |*bui_arr| {
-                    try bui_arr[0].add(allocator, bui_arr[1]);
+                    try bui_arr[0].add(allocator, &bui_arr[1]);
                     bui_arr[1].bytes.clearRetainingCapacity();
                     try bui_arr[1].bytes.appendSlice(allocator, self.bytes.items);
                     try bui_arr[1].shift_bytes_left(allocator, i);
@@ -124,13 +141,13 @@ pub const BigUInt = struct {
                 self.bytes = bui.bytes;
             },
             .sum_first => |*bui_arr| {
-                try bui_arr[0].add(allocator, bui_arr[1]);
+                try bui_arr[0].add(allocator, &bui_arr[1]);
                 bui_arr[1].deinit(allocator);
                 self.deinit(allocator);
                 self.bytes = bui_arr[0].bytes;
             },
             .sum_second => |*bui_arr| {
-                try bui_arr[1].add(allocator, bui_arr[0]);
+                try bui_arr[1].add(allocator, &bui_arr[0]);
                 bui_arr[0].deinit(allocator);
                 self.deinit(allocator);
                 self.bytes = bui_arr[1].bytes;
@@ -170,16 +187,16 @@ pub const BigUInt = struct {
         std.mem.copyBackwards(u32, self.bytes.items[by..], self.bytes.items[0..old_len]);
         @memset(self.bytes.items[0..by], 0);
     }
-    pub fn format(self: BigUInt, comptime fmt: []const u8, options: std.fmt.FormatOptions, writer: anytype) !void {
+    pub fn format(self: BigUInt, writer: *std.io.Writer) !void {
         try writer.writeAll("BigNumber{ ");
         for (0..self.bytes.items.len) |i| {
             const b = self.bytes.items[i];
-            try std.fmt.formatIntValue(b, fmt, options, writer);
+            try writer.printInt(b, 10, .lower, .{});
             if (i != self.bytes.items.len - 1) try writer.writeAll(", ");
         }
         try writer.writeAll(" }");
     }
-    pub fn order(self: BigUInt, other: BigUInt) std.math.Order {
+    pub fn order(self: BigUInt, other: *const BigUInt) std.math.Order {
         const self_len = self.bytes.items.len;
         if (self_len > other.bytes.items.len) {
             return std.math.Order.gt;
@@ -236,14 +253,5 @@ pub fn bui_comb(allocator: std.mem.Allocator, n: u32, r: u32) !BigUInt {
     return bui;
 }
 test "BigUInt" {
-    const t_allocator = std.testing.allocator;
-    var bui = try bui_comb(t_allocator, 1234, 15);
-    defer bui.deinit(t_allocator);
-    var prng = std.Random.DefaultPrng.init(@bitCast(std.time.milliTimestamp()));
-    std.debug.print("bui: {}\n", .{bui.to_float(f32)});
-    for (0..100) |_| {
-        var bui2: BigUInt = try .init_random(t_allocator, prng.random(), bui);
-        defer bui2.deinit(t_allocator);
-        std.debug.print("random: {}\n", .{bui2.to_float(f32)});
-    }
+    //
 }

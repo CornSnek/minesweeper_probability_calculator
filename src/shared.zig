@@ -69,6 +69,9 @@ pub const StringSlice = extern struct {
     ptr: [*c]u8,
     len: usize,
     pub const empty: StringSlice = .{ .ptr = 0, .len = 0 };
+    pub fn slice(self: StringSlice) []u8 {
+        return self.ptr[0..self.len];
+    }
 };
 pub const PlayProbabilityStatus = enum(i32) {
     idle,

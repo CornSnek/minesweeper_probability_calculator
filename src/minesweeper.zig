@@ -467,23 +467,23 @@ pub const MinesweeperMatrix = struct {
             }
         };
     };
-    pub const MineFrequencyConvolute = struct {
+    pub const MineFrequencyConvolve = struct {
         mds: std.ArrayList(usize), //usize is the index of the MineFrequency
         m: usize,
         f: big_number.BigUInt,
-        pub fn init(allocator: std.mem.Allocator) !MineFrequencyConvolute {
+        pub fn init(allocator: std.mem.Allocator) !MineFrequencyConvolve {
             return .{
                 .mds = .empty,
                 .m = 0,
                 .f = try .init(allocator, 1),
             };
         }
-        pub fn convolute(self: *MineFrequencyConvolute, allocator: std.mem.Allocator, mf: MineFrequency, conv_md: usize) !void {
+        pub fn convolve(self: *MineFrequencyConvolve, allocator: std.mem.Allocator, mf: MineFrequency, conv_md: usize) !void {
             self.m += mf.m;
             try self.f.multiply_byte(allocator, @truncate(mf.f));
             try self.mds.append(allocator, conv_md);
         }
-        pub fn deinit(self: *MineFrequencyConvolute, allocator: std.mem.Allocator) void {
+        pub fn deinit(self: *MineFrequencyConvolve, allocator: std.mem.Allocator) void {
             self.mds.deinit(allocator);
             self.f.deinit(allocator);
         }
@@ -780,7 +780,7 @@ pub const MinesweeperMatrix = struct {
             bui_free_max.set(total_free_count);
             self.sb.number_bytes = @truncate((self.tm.idtol.items.len + 31) / 32);
             var total: usize = 0;
-            while (bui_free_counter.order(bui_free_max) != .eq) : (try bui_free_counter.add_one(allocator)) {
+            while (bui_free_counter.order(&bui_free_max) != .eq) : (try bui_free_counter.add_one(allocator)) {
                 if (UsingWasm) {
                     const wasm_main = @import("wasm_main.zig"); //Inside UsingWasm to prevent zig build test from reading wasm_allocator (error)
                     if (@atomicLoad(bool, &wasm_main.CalculateStatus, .acquire)) {
@@ -1455,11 +1455,11 @@ test "MinesweeperMatrix.separate_subsystems" {
         defer mp_status.ok.deinit(t_allocator);
         var mm = try mp_status.ok.to_minesweeper_matrix(t_allocator);
         defer mm.deinit(t_allocator);
-        std.debug.print("{p}\nSeparating equations to different subsystems\n", .{mm});
+        std.debug.print("{f}\nSeparating equations to different subsystems\n", .{mm});
         const mms = try mm.separate_subsystems(t_allocator);
         defer {
             for (mms) |*mm_sub| {
-                std.debug.print("{p}", .{mm_sub});
+                std.debug.print("{f}", .{mm_sub});
                 mm_sub.deinit(t_allocator);
             }
             t_allocator.free(mms);

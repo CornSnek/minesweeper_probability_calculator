@@ -3,6 +3,10 @@ const wasm_print = @import("wasm_print.zig");
 const logger = @import("logger.zig");
 const minesweeper = @import("minesweeper.zig");
 const shared = @import("shared.zig");
+const rng = @import("rng.zig");
+const StringSlice = @import("shared.zig").StringSlice;
+const get_board_data = @import("rng.zig").get_board_data;
+const big_number = @import("big_number.zig");
 pub const wasm_allocator = std.heap.wasm_allocator;
 pub const std_options: std.Options = .{
     .logFn = logger.std_options_impl.logFn,
@@ -318,6 +322,377 @@ export fn CalculateProbability() [*c]shared.CalculateArray {
         cm.last_calculate_str = null;
     }
     return &cm.calculate_array;
+}
+const SSID = struct {
+    ss: usize,
+    id: usize,
+};
+const LocationHM = std.HashMapUnmanaged(minesweeper.TileLocation, SSID, LocationHMCtx, 80);
+const LocationHMCtx = struct {
+    pub fn hash(_: @This(), a: minesweeper.TileLocation) u64 {
+        //For wasm, usize is 32 bit.
+        const h: [2]usize = .{ a.x, a.y };
+        return @bitCast(h);
+    }
+    pub fn eql(_: @This(), a: minesweeper.TileLocation, b: minesweeper.TileLocation) bool {
+        return a.x == b.x and a.y == b.y;
+    }
+};
+/// Hypergeometric distribution. exclude_one is used whenever a current tile is not an adjacent tile (always safe)
+/// in order to count region mines correctly.
+fn hg_numerator(exclude_one: bool, bd: rng.BoardData, leftover_m: u32, r_m: u32, r: u32) !big_number.BigUInt {
+    std.debug.assert(r != 0);
+    if (leftover_m >= r_m) {
+        var res_bui = try big_number.bui_comb(wasm_allocator, r, r_m);
+        errdefer res_bui.deinit(wasm_allocator);
+        const total_non_adjacent: u32 = @truncate(@as(usize, @bitCast(bd.non_adjacent_tiles)));
+        std.debug.assert(total_non_adjacent >= r);
+        var rest_leftover_comb = try big_number.bui_comb(wasm_allocator, total_non_adjacent - r, leftover_m - r_m);
+        defer rest_leftover_comb.deinit(wasm_allocator);
+        if (exclude_one and r_m != 0) {
+            var comb_mine_in_excluded = try big_number.bui_comb(wasm_allocator, r - 1, r_m - 1);
+            defer comb_mine_in_excluded.deinit(wasm_allocator);
+            const should_be_pos = try res_bui.sub(wasm_allocator, &comb_mine_in_excluded);
+            std.debug.assert(should_be_pos);
+        }
+        try res_bui.multiply(wasm_allocator, &rest_leftover_comb);
+        return res_bui;
+    } else return .init(wasm_allocator, 0);
+}
+const TilesMetadata = struct {
+    middle: minesweeper.TileLocation,
+    tiles: [8]minesweeper.TileLocation,
+    len: usize,
+    fn init(x: usize, y: usize, width: usize, height: usize) TilesMetadata {
+        const xgt0 = x > 0;
+        const xltw = x < width - 1;
+        const ygt0 = y > 0;
+        const ylth = y < height - 1;
+        var at: TilesMetadata = .{ .middle = .{ .x = x, .y = y }, .tiles = undefined, .len = 0 };
+        if (ygt0) {
+            at.tiles[at.len] = .{ .y = y - 1, .x = x };
+            at.len += 1;
+        }
+        if (ygt0 and xltw) {
+            at.tiles[at.len] = .{ .y = y - 1, .x = x + 1 };
+            at.len += 1;
+        }
+        if (xltw) {
+            at.tiles[at.len] = .{ .y = y, .x = x + 1 };
+            at.len += 1;
+        }
+        if (ylth and xltw) {
+            at.tiles[at.len] = .{ .y = y + 1, .x = x + 1 };
+            at.len += 1;
+        }
+        if (ylth) {
+            at.tiles[at.len] = .{ .y = y + 1, .x = x };
+            at.len += 1;
+        }
+        if (ylth and xgt0) {
+            at.tiles[at.len] = .{ .y = y + 1, .x = x - 1 };
+            at.len += 1;
+        }
+        if (xgt0) {
+            at.tiles[at.len] = .{ .y = y, .x = x - 1 };
+            at.len += 1;
+        }
+        if (ygt0 and xgt0) {
+            at.tiles[at.len] = .{ .y = y - 1, .x = x - 1 };
+            at.len += 1;
+        }
+        return at;
+    }
+    fn slice(self: *const TilesMetadata) []const minesweeper.TileLocation {
+        return self.tiles[0..self.len];
+    }
+};
+const TileStatsType = union(enum) {
+    na_safe,
+    na_mine,
+    na_unknown,
+    adj: SSID,
+};
+const SS_SolutionBitsRange = struct {
+    sbr: minesweeper.SolutionBits.SolutionBitsRange,
+    ss: usize,
+};
+const AdjMinecountMap = struct {
+    //Indices range from 0 to 8 tile and tile is a mine (9)
+    map: [10]big_number.BigUInt,
+    const IDX_MINE: usize = 9;
+    ///init_num only affects 0-8 and is 0 for `IDX_MINE`.
+    fn init(allocator: std.mem.Allocator) !AdjMinecountMap {
+        var adj_mm: AdjMinecountMap = undefined;
+        var adj_mm_len: usize = 0;
+        for (adj_mm.map[0..10]) |*bui| {
+            errdefer for (adj_mm.map[0..adj_mm_len]) |*ebui| ebui.deinit(allocator);
+            bui.* = try .init(allocator, 0);
+            adj_mm_len += 1;
+        }
+        return adj_mm;
+    }
+    fn clone(self: AdjMinecountMap, allocator: std.mem.Allocator) !AdjMinecountMap {
+        var ret: AdjMinecountMap = undefined;
+        var ret_len: usize = 0;
+        for (&self.map, &ret.map) |*sbui, *retbui| {
+            errdefer for (ret.map[0..ret_len]) |*ebui| ebui.deinit(allocator);
+            retbui.* = try sbui.clone(allocator);
+            ret_len += 1;
+        }
+        return ret;
+    }
+    /// Shift or convolve frequency of 0-8 adjacent mines with a constant `by` when counting all`.na_mine`.
+    fn shift(self: *AdjMinecountMap, allocator: std.mem.Allocator, by: usize) !void {
+        if (by == 0) return;
+        for (0..9 - by) |old_i| {
+            const new_i = old_i + by;
+            self.map[new_i].deinit(allocator);
+            self.map[new_i] = self.map[old_i];
+            self.map[old_i] = try .init(allocator, 0);
+        }
+    }
+    //To add all other adj_mm.
+    fn add(self: *AdjMinecountMap, allocator: std.mem.Allocator, other: *const AdjMinecountMap) !void {
+        for (&self.map, &other.map) |*smap, *omap|
+            try smap.add(allocator, omap);
+    }
+    //To multiply other ss that was not part of the regions to consider.
+    fn multiply(self: *AdjMinecountMap, allocator: std.mem.Allocator, other_bui: *const big_number.BigUInt) !void {
+        for (&self.map) |*smap|
+            try smap.multiply(allocator, other_bui);
+    }
+    fn convolve(self: *AdjMinecountMap, allocator: std.mem.Allocator, other: *const AdjMinecountMap) !void {
+        var result: AdjMinecountMap = try .init(allocator);
+        errdefer result.deinit(allocator);
+        for (0..9) |i| {
+            for (0..9) |j| {
+                const m = i + j;
+                if (m >= IDX_MINE) continue;
+                const self_bui = &self.map[i];
+                const other_bui = &other.map[j];
+                var bui_mult: big_number.BigUInt = try self_bui.clone(allocator);
+                defer bui_mult.deinit(wasm_allocator);
+                try bui_mult.multiply(allocator, other_bui);
+                try result.map[m].add(allocator, &bui_mult);
+            }
+        }
+        var idx_mine_bui: big_number.BigUInt = try .init(allocator, 0);
+        defer idx_mine_bui.deinit(allocator);
+        const self_idx_nz = !self.map[IDX_MINE].is_zero();
+        const other_idx_nz = !other.map[IDX_MINE].is_zero();
+        //To add and multiply the number of combinations where the tile is a mine for IDX_MINE
+        if (self_idx_nz and other_idx_nz) {
+            @panic("Both self and other should not have IDX_MINE be nonzero");
+        } else if (self_idx_nz) {
+            for (0..9) |i| {
+                var bui: big_number.BigUInt = try other.map[i].clone(allocator);
+                defer bui.deinit(allocator);
+                try bui.multiply(allocator, &self.map[IDX_MINE]);
+                try idx_mine_bui.add(allocator, &bui);
+            }
+        } else if (other_idx_nz) {
+            for (0..9) |i| {
+                var bui: big_number.BigUInt = try self.map[i].clone(allocator);
+                defer bui.deinit(allocator);
+                try bui.multiply(allocator, &other.map[IDX_MINE]);
+                try idx_mine_bui.add(allocator, &bui);
+            }
+        }
+        try result.map[IDX_MINE].add(allocator, &idx_mine_bui);
+        self.deinit(allocator);
+        self.* = result;
+    }
+    pub fn format(self: AdjMinecountMap, writer: *std.io.Writer) !void {
+        try writer.writeAll("AdjMinecountMap{ ");
+        for (0..10) |i| {
+            const bui = &self.map[i];
+            try bui.format(writer);
+            if (i != 9) try writer.writeAll(", ");
+        }
+        try writer.writeAll(" }");
+    }
+    fn deinit(self: *AdjMinecountMap, allocator: std.mem.Allocator) void {
+        for (&self.map) |*bui| bui.deinit(allocator);
+    }
+};
+fn sb_bit(sb: []const u32, i: usize) u1 {
+    const bit_i: u5 = @truncate(i & 0b11111);
+    return @intFromBool(sb[i >> 5] & (@as(u32, 1) << bit_i) != 0);
+}
+fn ss_sort(_: void, lhs: usize, rhs: usize) bool {
+    return lhs < rhs;
+}
+var tile_stats_now: [10]f64 = undefined;
+extern fn ReturnTileStats([*c]f64, usize) void;
+fn calculate_tile_stats(x: usize, y: usize, global_mine_count: isize, include_mine_flags: bool) !void {
+    if (cm.is_probability_calculated()) {
+        //v is the index of the subsystem of the tile.
+        var loc_hm: LocationHM = .empty;
+        defer loc_hm.deinit(wasm_allocator);
+        const width = cm.map_parser.?.width;
+        const height = cm.map_parser.?.height;
+        const tmd: TilesMetadata = .init(x, y, width, height);
+        const bd = get_board_data(&cm, global_mine_count, include_mine_flags) orelse return error.InvalidBoardData;
+        var mfcs = try rng.mfcs_create(&cm, bd, bd.adj_mine_count, false);
+        defer mfcs.deinit(wasm_allocator);
+        for (cm.mm_subsystems, 0..) |*mms, ss| {
+            for (mms.tm.idtol.items) |tl| {
+                try loc_hm.put(wasm_allocator, tl, .{ .id = mms.tm.ltoid.get(tl).?, .ss = ss });
+            }
+        }
+        std.log.debug("Clicking tile ({},{})", .{ x, y });
+        for (mfcs.items) |*mfc| {
+            std.log.warn("{} {any} {any}\n", .{ mfc.m, mfc.f.bytes.items, mfc.mds.items });
+        }
+        const middle_tst: TileStatsType = v: {
+            if (loc_hm.get(tmd.middle)) |ssid| {
+                break :v .{ .adj = ssid };
+            } else {
+                const mstype = cm.map_parser.?.map.items[tmd.middle.y * width + tmd.middle.x];
+                if (mstype.is_number() or mstype == .donotcare) {
+                    break :v .na_safe;
+                } else if (mstype == .flag or mstype == .mine) {
+                    break :v .na_mine;
+                } else {
+                    break :v .na_unknown;
+                }
+            }
+        };
+        var tmd_tst: [8]TileStatsType = undefined;
+        for (tmd_tst[0..tmd.len], tmd.slice()) |*tst, tl| {
+            if (loc_hm.get(tl)) |ssid| {
+                tst.* = .{ .adj = ssid };
+            } else {
+                const mstype = cm.map_parser.?.map.items[tl.y * width + tl.x];
+                if (mstype.is_number() or mstype == .donotcare) {
+                    tst.* = .na_safe;
+                } else if (mstype == .flag or mstype == .mine) {
+                    tst.* = .na_mine;
+                } else {
+                    tst.* = .na_unknown;
+                }
+            }
+        }
+        var total_adj_mm: AdjMinecountMap = try .init(wasm_allocator);
+        defer total_adj_mm.deinit(wasm_allocator);
+        if (middle_tst == .na_unknown) {
+            for (mfcs.items) |*mfc| {
+                const mines_left: u32 = @truncate(@as(usize, @bitCast(bd.adj_mine_count)) - mfc.m);
+                std.log.debug("mines_left: {} mfc.m: {}\n", .{ mines_left, mfc.m });
+                var num_unknowns: usize = 0;
+                for (tmd_tst) |tst| {
+                    if (tst == .na_unknown) num_unknowns += 1;
+                }
+                //Sum of unknown_adj_mm should be comb(#'non-adjacent tiles', 'mines left per solutions').
+                var unknown_adj_mm: AdjMinecountMap = try .init(wasm_allocator);
+                defer unknown_adj_mm.deinit(wasm_allocator);
+                for (0..num_unknowns + 1) |r_m| {
+                    unknown_adj_mm.map[r_m].deinit(wasm_allocator);
+                    unknown_adj_mm.map[r_m] = try hg_numerator(true, bd, mines_left, @truncate(r_m), @truncate(num_unknowns + 1));
+                }
+                {
+                    const non_adj_tiles: u32 = @truncate(@as(usize, @bitCast(bd.non_adjacent_tiles)));
+                    if (non_adj_tiles != 0 and mines_left != 0) {
+                        unknown_adj_mm.map[AdjMinecountMap.IDX_MINE].deinit(wasm_allocator);
+                        unknown_adj_mm.map[AdjMinecountMap.IDX_MINE] = try big_number.bui_comb(wasm_allocator, non_adj_tiles - 1, mines_left - 1);
+                    }
+                }
+                var num_na_mine: usize = 0;
+                for (tmd_tst[0..tmd.len]) |tst| {
+                    if (tst == .na_mine) num_na_mine = 0;
+                }
+                try unknown_adj_mm.shift(wasm_allocator, num_na_mine);
+                //At most 4 subsystems may be read in adjacent tile stats.
+                var ss_arr: [4]usize = undefined;
+                var ss_arr_len: usize = 0;
+                for (tmd_tst[0..tmd.len]) |tst| {
+                    if (tst == .adj) {
+                        for (ss_arr) |ss| {
+                            if (tst.adj.ss == ss) break;
+                        } else {
+                            ss_arr[ss_arr_len] = tst.adj.ss;
+                            ss_arr_len += 1;
+                        }
+                    }
+                }
+                std.mem.sort(usize, &ss_arr, {}, ss_sort);
+                //Any ss not in ss_arr will have its range length multiplied.
+                var leftover_ss_bui: big_number.BigUInt = try .init(wasm_allocator, 1);
+                defer leftover_ss_bui.deinit(wasm_allocator);
+                next_not_used: for (0..cm.mm_subsystems.len) |ss| {
+                    for (ss_arr[0..ss_arr_len]) |ss_cmp|
+                        if (ss == ss_cmp) continue :next_not_used;
+                    const sbr = cm.mm_subsystems[ss].sb.metadata.items[mfc.mds.items[ss]];
+                    try leftover_ss_bui.multiply_byte(wasm_allocator, @truncate(sbr.end - sbr.begin));
+                }
+                //Used as a counter to iterate all ranges of adjacent tiles.
+                var ss_sbr_arr: std.ArrayList(SS_SolutionBitsRange) = .empty;
+                defer ss_sbr_arr.deinit(wasm_allocator);
+                for (ss_arr[0..ss_arr_len]) |ss| {
+                    const sbr = cm.mm_subsystems[ss].sb.metadata.items[mfc.mds.items[ss]];
+                    try ss_sbr_arr.append(wasm_allocator, .{
+                        .sbr = sbr,
+                        .ss = ss,
+                    });
+                }
+                var conv_adj_mm: AdjMinecountMap = try .init(wasm_allocator);
+                defer conv_adj_mm.deinit(wasm_allocator);
+                conv_adj_mm.map[0].reset(1); //0th is 1 to convolve properly.
+                for (ss_sbr_arr.items) |*ss_sbr| {
+                    var this_adj_bits: [8]usize = undefined;
+                    var tab_len: usize = 0;
+                    for (tmd_tst[0..tmd.len]) |tst| {
+                        if (tst == .adj) {
+                            if (tst.adj.ss == ss_sbr.ss) {
+                                this_adj_bits[tab_len] = tst.adj.id;
+                                tab_len += 1;
+                            }
+                        }
+                    }
+                    var adj_mm: AdjMinecountMap = try .init(wasm_allocator);
+                    defer adj_mm.deinit(wasm_allocator);
+                    for (ss_sbr.sbr.begin..ss_sbr.sbr.end) |i| {
+                        const range_bits = cm.mm_subsystems[ss_sbr.ss].sb.get_range_bits(i);
+                        var num_mines: usize = 0;
+                        for (this_adj_bits[0..tab_len]) |bit| num_mines += sb_bit(range_bits, bit);
+                        try adj_mm.map[num_mines].add_one(wasm_allocator);
+                    }
+                    try conv_adj_mm.convolve(wasm_allocator, &adj_mm);
+                }
+                var unknown_conv_adj_mm: AdjMinecountMap = try unknown_adj_mm.clone(wasm_allocator);
+                defer unknown_conv_adj_mm.deinit(wasm_allocator);
+                try unknown_conv_adj_mm.convolve(wasm_allocator, &conv_adj_mm);
+                try unknown_conv_adj_mm.multiply(wasm_allocator, &leftover_ss_bui);
+                try total_adj_mm.add(wasm_allocator, &unknown_conv_adj_mm);
+            }
+        } else {
+            //
+        }
+        std.log.warn("total_adj_mm: {f}\n", .{total_adj_mm});
+        var sum_bui: big_number.BigUInt = try .init(wasm_allocator, 0);
+        defer sum_bui.deinit(wasm_allocator);
+        for (0..10) |m|
+            try sum_bui.add(wasm_allocator, &total_adj_mm.map[m]);
+        const sum_bui_float = sum_bui.to_float(f64);
+        for (0..10) |m|
+            tile_stats_now[m] = total_adj_mm.map[m].to_float(f64) / sum_bui_float;
+        ReturnTileStats(&tile_stats_now, y * width + x);
+    }
+}
+export fn CalculateTileStats(x: usize, y: usize, global_mine_count: isize, include_mine_flags: bool) void {
+    calculate_tile_stats(x, y, global_mine_count, include_mine_flags) catch |e| {
+        switch (e) {
+            error.OutOfMemory => {
+                @panic("Allocation error.");
+            },
+            error.InvalidBoardData => {
+                std.log.err("{s}\n", .{rng.error_slice.slice()});
+                @import("wasm_jsalloc.zig").WasmFree(rng.error_slice.ptr);
+            },
+        }
+    };
+    @import("wasm_print.zig").FlushPrint(false);
 }
 pub extern fn ClearResults() void;
 pub extern fn AppendResults([*c]const u8, usize) void;

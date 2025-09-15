@@ -6,10 +6,10 @@ const wasm_jsalloc = @import("wasm_jsalloc.zig");
 const StringSlice = @import("shared.zig").StringSlice;
 const big_number = @import("big_number.zig");
 const SolutionBitsRange = @import("minesweeper.zig").SolutionBits.SolutionBitsRange;
-const MineFrequencyConvolute = @import("minesweeper.zig").MinesweeperMatrix.MineFrequencyConvolute;
+const MineFrequencyConvolute = @import("minesweeper.zig").MinesweeperMatrix.MineFrequencyConvolve;
 const PlayProbabilityStatus = @import("shared.zig").PlayProbabilityStatus;
 const FStruct = @import("shared.zig").FStruct;
-var error_slice: StringSlice = .empty;
+pub var error_slice: StringSlice = .empty;
 fn add_error_slice(err_msg: []u8) void {
     wasm_jsalloc.slice_to_js(err_msg) catch {
         wasm_allocator.free(err_msg);
@@ -313,10 +313,10 @@ pub const BoardData = struct {
     }
 };
 ///The error messages are similar to global calculation in index.js
-fn get_board_data(global_mine_count: isize, include_mine_flags: bool) ?BoardData {
+pub fn get_board_data(cm_p: *CalculatedMap, global_mine_count: isize, include_mine_flags: bool) ?BoardData {
     var bd: BoardData = .init(global_mine_count, include_mine_flags);
     var total_flag_mines: isize = 0;
-    for (cm.map_parser.?.map.items) |ms_type| {
+    for (cm_p.map_parser.?.map.items) |ms_type| {
         if (ms_type == .unknown) {
             bd.non_adjacent_tiles += 1;
         } else if (include_mine_flags) {
@@ -344,7 +344,7 @@ fn get_board_data(global_mine_count: isize, include_mine_flags: bool) ?BoardData
         add_error_slice(err_msg);
         return null;
     }
-    for (cm.mm_subsystems) |*mm_sub| {
+    for (cm_p.mm_subsystems) |*mm_sub| {
         bd.non_adjacent_tiles -= @bitCast(mm_sub.tm.idtol.items.len);
         for (mm_sub.sb.get_range_bits(0)) |*b| {
             bd.least_solution_mines += @popCount(b.*);
@@ -402,7 +402,7 @@ export fn HasUploaded() bool {
 }
 export fn CheckCurrentBoard(global_mine_count: isize, include_mine_flags: bool) [*c]StringSlice {
     std.debug.assert(cm.is_probability_calculated());
-    _ = get_board_data(global_mine_count, include_mine_flags) orelse return &error_slice;
+    _ = get_board_data(&cm, global_mine_count, include_mine_flags) orelse return &error_slice;
     return 0;
 }
 fn allocation_error() noreturn {
@@ -469,37 +469,22 @@ fn mine_tiles_random(
     }
     return random_list;
 }
-fn create_preset_board(bd: BoardData) !void {
-    const board_size: u32 = (@as(u32, @truncate(cm.map_parser.?.map.items.len)) + 7) / 8;
-    try mine_board.appendNTimes(wasm_allocator, 0, board_size);
-    try left_click_board.appendNTimes(wasm_allocator, 0, board_size);
-    try right_click_board.appendNTimes(wasm_allocator, 0, board_size);
-    for (cm.map_parser.?.map.items, 0..) |ms_type, i| {
-        const bb: ByteBit = .init_i(i);
-        if (ms_type == .mine) {
-            mine_board.items[bb.byte] |= bb.bit;
-        }
-        if (ms_type == .flag) {
-            right_click_board.items[bb.byte] |= bb.bit;
-            mine_board.items[bb.byte] |= bb.bit; //Mine in flag
-        }
-        if (ms_type.is_number() or ms_type == .donotcare)
-            left_click_board.items[bb.byte] |= bb.bit;
-    }
-    var mines_left = bd.adj_mine_count;
-    var i_array: std.ArrayList(usize) = .empty;
-    defer i_array.deinit(wasm_allocator);
-    const ss_len = cm.mm_subsystems.len;
-    //Index of conv_ctr is SubSystem index, and .c is MineFrequency index (.m is maximum per SubSystem).
-    var conv_ctr: std.ArrayList(struct { c: usize = 0, m: usize }) = .empty;
+//Index of conv_ctr is SubSystem index, and .c is MineFrequency index (.m is maximum per SubSystem).
+pub const SSMF = struct {
+    c: usize = 0,
+    m: usize,
+};
+pub fn mfcs_create(cm_p: *CalculatedMap, bd: BoardData, mines_left: isize, as_running_total: bool) !std.ArrayList(MineFrequencyConvolute) {
+    var conv_ctr: std.ArrayList(SSMF) = .empty;
     defer conv_ctr.deinit(wasm_allocator);
+    const ss_len = cm_p.mm_subsystems.len;
     for (0..ss_len) |ss_i| {
-        const calc = &cm.calculate_array.ptr[ss_i];
+        const calc = &cm_p.calculate_array.ptr[ss_i];
         const mf_len = calc.pl.mf_len;
         try conv_ctr.append(wasm_allocator, .{ .m = mf_len });
     }
     var mfcs: std.ArrayList(MineFrequencyConvolute) = .empty;
-    defer {
+    errdefer {
         for (mfcs.items) |*m|
             m.deinit(wasm_allocator);
         mfcs.deinit(wasm_allocator);
@@ -521,8 +506,8 @@ fn create_preset_board(bd: BoardData) !void {
         errdefer mfc.deinit(wasm_allocator);
         for (0..conv_ctr.items.len) |ss_i| {
             const mf_i = conv_ctr.items[ss_i].c;
-            const mf = cm.calculate_array.slice()[ss_i].pl.mf_slice()[mf_i];
-            try mfc.convolute(wasm_allocator, mf, mf_i);
+            const mf = cm_p.calculate_array.slice()[ss_i].pl.mf_slice()[mf_i];
+            try mfc.convolve(wasm_allocator, mf, mf_i);
         }
         //Only use valid mine count solutions within ranges.
         if (mines_left < mfc.m) { //Exclude too little .m
@@ -540,22 +525,45 @@ fn create_preset_board(bd: BoardData) !void {
             g_min_m,
         ); //Multiply convoluted f with comb(unknown_non-adjacent_tiles, mine_count - mfc.m)
         errdefer bui_comb.deinit(wasm_allocator);
-        try mfc.f.multiply(wasm_allocator, bui_comb);
+        try mfc.f.multiply(wasm_allocator, &bui_comb);
         try mfcs.append(wasm_allocator, mfc);
     }
-    for (0..mfcs.items.len) |j| { //Make as running total to get a big number unsigned integer [0,running total).
-        const rev_i = mfcs.items.len - 1 - j;
-        const last_f = &mfcs.items[rev_i].f;
-        for (0..rev_i) |k|
-            try last_f.add(wasm_allocator, mfcs.items[k].f);
+    if (as_running_total) {
+        for (0..mfcs.items.len) |j| { //Make as running total to get a big number unsigned integer [0,running total).
+            const rev_i = mfcs.items.len - 1 - j;
+            const last_f = &mfcs.items[rev_i].f;
+            for (0..rev_i) |k|
+                try last_f.add(wasm_allocator, &mfcs.items[k].f);
+        }
     }
-    //for (mfcs.items) |*mfc| {
-    //std.log.warn("{any}\n", .{mfc.f.bytes.items});
-    //}
-    var mfc_f_random: big_number.BigUInt = try .init_random(wasm_allocator, prng.random(), mfcs.getLast().f);
+    return mfcs;
+}
+fn create_preset_board(bd: BoardData) !void {
+    const board_size: u32 = (@as(u32, @truncate(cm.map_parser.?.map.items.len)) + 7) / 8;
+    try mine_board.appendNTimes(wasm_allocator, 0, board_size);
+    try left_click_board.appendNTimes(wasm_allocator, 0, board_size);
+    try right_click_board.appendNTimes(wasm_allocator, 0, board_size);
+    for (cm.map_parser.?.map.items, 0..) |ms_type, i| {
+        const bb: ByteBit = .init_i(i);
+        if (ms_type == .mine) {
+            mine_board.items[bb.byte] |= bb.bit;
+        }
+        if (ms_type == .flag) {
+            right_click_board.items[bb.byte] |= bb.bit;
+            mine_board.items[bb.byte] |= bb.bit; //Mine in flag
+        }
+        if (ms_type.is_number() or ms_type == .donotcare)
+            left_click_board.items[bb.byte] |= bb.bit;
+    }
+    var mines_left = bd.adj_mine_count;
+    var i_array: std.ArrayList(usize) = .empty;
+    defer i_array.deinit(wasm_allocator);
+    var mfcs = try mfcs_create(&cm, bd, mines_left, true);
+    defer mfcs.deinit(wasm_allocator);
+    var mfc_f_random: big_number.BigUInt = try .init_random(wasm_allocator, prng.random(), &mfcs.items[mfcs.items.len - 1].f);
     defer mfc_f_random.deinit(wasm_allocator);
     var chosen_mfc: usize = 0;
-    while (mfc_f_random.order(mfcs.items[chosen_mfc].f) != .lt) : (chosen_mfc += 1) {}
+    while (mfc_f_random.order(&mfcs.items[chosen_mfc].f) != .lt) : (chosen_mfc += 1) {}
     //std.log.warn("{} {any}\n", .{ chosen_mfc, mfc_f_random.bytes });
     const chosen_mds = mfcs.items[chosen_mfc].mds.items;
     mines_left -= @bitCast(mfcs.items[chosen_mfc].m);
@@ -596,7 +604,7 @@ fn create_preset_board(bd: BoardData) !void {
 fn minesweeper_init_board(global_mine_count: isize, include_mine_flags: bool) ![*c]StringSlice {
     std.debug.assert(cm.is_probability_calculated());
     clear_board();
-    const bd = get_board_data(global_mine_count, include_mine_flags) orelse return &error_slice;
+    const bd = get_board_data(&cm, global_mine_count, include_mine_flags) orelse return &error_slice;
     try create_preset_board(bd);
     write_mine_seed(@truncate(cm.map_parser.?.width), @truncate(cm.map_parser.?.height)) catch allocation_error();
     parsed_width = @truncate(cm.map_parser.?.width);
@@ -663,7 +671,7 @@ extern fn ReturnProbabilityStats([*c]FStruct, usize) void;
 pub export fn ProbabilityClickTile(global_mine_count: isize, include_mine_flags: bool, tile_i: usize) void {
     std.debug.assert(cm.is_probability_calculated());
     clear_board();
-    const bd_o = get_board_data(global_mine_count, include_mine_flags);
+    const bd_o = get_board_data(&cm, global_mine_count, include_mine_flags);
     if (bd_o) |bd| {
         //Counts from 0 number tile (0), 1 number tile (1), 2 number tile (2), ... 8 number tile (8), and mine tile (9).
         var f_table: [10]usize = [1]usize{0} ** 10;

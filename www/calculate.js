@@ -8,6 +8,7 @@ onmessage = onmessage_f;
 //Because CalculateProbability might take a while (And freezes the browser page), a Worker and shared wasm memory is used to prevent freezes.
 const worker_module = {
     CalculateProbability,
+    CalculateTileStats,
     ProbabilityClickTile,
 };
 function SetSubsystemNumber(subsystems) {
@@ -15,6 +16,13 @@ function SetSubsystemNumber(subsystems) {
 }
 function SetTimeoutProgress(subsystem_id, progress) {
     postMessage(['SetTimeoutProgress', subsystem_id, progress]);
+}
+function CalculateTileStats(x, y, gm_count, include_flags) {
+    WasmExports.CalculateTileStats(x, y, gm_count, include_flags);
+}
+function ReturnTileStats(f_ptr, tile_i) {
+    const arr = new Float64Array(WasmMemory.buffer, f_ptr, 10);
+    postMessage(['SendProbabilityStats', arr, tile_i, true]);
 }
 function CalculateProbability() {
     try {
@@ -41,7 +49,10 @@ async function onmessage_f(e) {
     } else if (e.data[0] = 'm') {
         WasmMemory = e.data[1];
         const wasm_obj = await WebAssembly.instantiateStreaming(fetch('./minesweeper_calculator.wasm'), {
-            env: { memory: WasmMemory, JSPrint, ClearResults, AppendResults, FinalizeResults, SetSubsystemNumber, SetTimeoutProgress, ReturnProbabilityStats },
+            env: { memory: WasmMemory, JSPrint, ClearResults,
+                AppendResults, FinalizeResults, SetSubsystemNumber,
+                SetTimeoutProgress, ReturnProbabilityStats, ReturnTileStats,
+            },
         });
         WasmObj = wasm_obj;
         WasmExports = wasm_obj.instance.exports;
@@ -104,7 +115,7 @@ function FinalizeResults() {
 }
 function ReturnProbabilityStats(ptr, tile_i) {
     const arr = new Uint32Array(WasmMemory.buffer, ptr, FStruct.$size / 4);
-    postMessage(['SendProbabilityStats', arr, tile_i]);
+    postMessage(['SendProbabilityStats', arr, tile_i, false]);
 }
 //Because memory is shared, WasmMemory.buffer (As a SharedArrayBuffer) requires more code to copy for TextDecoder to work.
 function copy_shared(addr, len) {

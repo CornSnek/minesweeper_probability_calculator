@@ -238,7 +238,11 @@ async function init() {
         }
     }
     const wasm_obj = await WebAssembly.instantiateStreaming(fetch('./minesweeper_calculator.wasm'), {
-        env: { memory: WasmMemory, JSPrint, ClearResults, AppendResults, FinalizeResults, SetSubsystemNumber, SetTimeoutProgress, ReturnProbabilityStats: () => { } },
+        env: {
+            memory: WasmMemory,
+            JSPrint, ClearResults, AppendResults, FinalizeResults,
+            SetSubsystemNumber, SetTimeoutProgress, ReturnProbabilityStats: () => { }, ReturnTileStats: () => { }
+        },
     });
     WasmObj = wasm_obj;
     WasmExports = wasm_obj.instance.exports;
@@ -289,6 +293,13 @@ async function init() {
                                 show_config_window_f(e);
                             else
                                 hide_config_window_f(e);
+                            break;
+                        case 'G':
+                            if (prob_window.classList.contains('window-hide')) {
+                                prob_window.classList.remove('window-hide');
+                            } else {
+                                hide_prob_f(e);
+                            }
                             break;
                         case 'P':
                             show_play_current_board_f(e);
@@ -1044,6 +1055,11 @@ function tile_select_any_f(e) {
         keybind_map.set(ch, assign_selected_f.bind({ tile, selected_tile, set_undo_buffer: true }));
     }
     keybind_map.set('Delete', assign_selected_f.bind({ tile: MsType.unknown, selected_tile, set_undo_buffer: true }));
+    if (selected_tile.type == SelectedTile.One && select_probability.value == 'Global' && !prob_window.classList.contains('window-hide')) {
+        calculate_worker.postMessage(['f', 'CalculateTileStats',
+            selected_tile.select.x, selected_tile.select.y, parseInt(gm_count.value), include_flags.checked
+        ]);
+    }
 }
 ///ord_fn is 0 if lhs is equal to rhs, negative if less than, or positive if greater than
 function binary_search(arr, target, ord_fn) {
@@ -1304,7 +1320,7 @@ class MFGList {
             global_mult.push(new Map(this.global[i].map)); //Shallow clone when colvolving all MFGs
         }
         for (let i = 0; i < this.global.length; i++) {
-            for (let j = 0; j < global_mult.length; j++) { //Convolute each global/local MFG with other global MFG subsystems.
+            for (let j = 0; j < global_mult.length; j++) { //Convolve each global/local MFG with other global MFG subsystems.
                 if (i == j) continue;
                 this.global[i].convolve(global_mult[j]);
                 this.local[i].forEach(mfg => mfg.convolve(global_mult[j]));
@@ -1951,7 +1967,7 @@ function hide_prob_f(e) {
     prob_window.classList.add('window-hide');
 }
 //Frequency format [0-tile, 1-tile, 2-tile, ... 7-tile, 8-tile, mine, total].
-function SendProbabilityStats(arr, tile_i) {
+function SendProbabilityStats(arr, tile_i, is_float_arr) {
     const p_labels = ['0', '1', '2', '3', '4', '5', '6', '7', '8', 'M'];
     const p_colors = [
         '#bfbfbf', '#0000ff', '#008000',
@@ -1959,6 +1975,7 @@ function SendProbabilityStats(arr, tile_i) {
         '#008080', '#000000', '#808080', '#bf3030'
     ];
     if (prob_chart.children.length === 0) {
+        prob_chart.textContent = '';
         for (let i = 0; i < 10; i++) {
             const pbar_container = document.createElement('div');
             prob_chart.appendChild(pbar_container);
@@ -1978,23 +1995,44 @@ function SendProbabilityStats(arr, tile_i) {
         const p_label = p_labels[i];
         let perc_str;
         if (!prob_exclude_mine.checked) {
-            perc_str = `${format_percentage(arr[i], arr[10], 4, 5)}%`;
-        } else {
-            if (i != 9) {
-                perc_str = `${format_percentage(arr[i], arr[10] - arr[9], 4, 5)}%`;
+            if (!is_float_arr) {
+                perc_str = `${format_percentage(arr[i], arr[10], 9, 10)}%`;
             } else {
-                perc_str = `${format_percentage(0, 1, 4, 5)}%`;
+                const perc = arr[i] * 100;
+                perc_str = `${perc.toFixed(10)}%`;
+            }
+        } else {
+            if (!is_float_arr) {
+                if (i != 9) {
+                    perc_str = `${format_percentage(arr[i], arr[10] - arr[9], 9, 10)}%`;
+                } else {
+                    perc_str = `${format_percentage(0, 1, 9, 10)}%`;
+                }
+            } else {
+                let perc = 0;
+                if (i != 9) {
+                    perc = arr[i] / (1 - arr[9]) * 100;
+                }
+                perc_str = `${perc.toFixed(10)}%`;
             }
         }
         const pbar_container = prob_chart.children[i];
         const pbar = pbar_container.children[0];
         pbar.style.setProperty('--width', perc_str);
         const plabel = pbar_container.children[1];
-        plabel.textContent = `${p_label} (${perc_str}) (${arr[i]} game(s))`;
+        if (!is_float_arr) {
+            plabel.textContent = `${p_label} (${perc_str}) (${arr[i]} game(s))`;
+        } else {
+            plabel.textContent = `${p_label} (${perc_str})`
+        }
     }
     const xy = Play.to_xy(tile_i, columns);
-    const total_games = (!prob_exclude_mine.checked) ? arr[10] : arr[10] - arr[9];
-    prob_desc.textContent = `Selected Tile: (x: ${xy[0]}, y: ${xy[1]}) Total: ${total_games}`;
+    if (!is_float_arr) {
+        const total_games = (!prob_exclude_mine.checked) ? arr[10] : arr[10] - arr[9];
+        prob_desc.textContent = `Selected Tile: (x: ${xy[0]}, y: ${xy[1]}) Total: ${total_games}`;
+    } else {
+        prob_desc.textContent = `Selected Tile: (x: ${xy[0]}, y: ${xy[1]})`;
+    }
 }
 let play_current_board;
 let play_body;
