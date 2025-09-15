@@ -204,6 +204,7 @@ async function init() {
     show_solution_subsystem = document.getElementById('show-solution-subsystem');
     show_solution_output = document.getElementById('show-solution-output');
     prob_chart = document.getElementById('prob-chart');
+    prob_chart_default_text = prob_chart.textContent;
     prob_desc = document.getElementById('prob-desc');
     prob_exclude_mine = document.getElementById('prob-exclude-mine');
     prob_window = document.getElementById('prob-window');
@@ -442,7 +443,7 @@ async function init() {
             return;
         }
         const err_slice_ptr = WasmExports.CheckCurrentBoard(parseInt(gm_count.value), include_flags.checked);
-        output_any_error(err_slice_ptr);
+        OutputAnyError(err_slice_ptr);
     };
     play_copy_board.onclick = e => play_obj.copy_board_str(e);
     play_current_board.onclick = show_play_current_board_f;
@@ -641,6 +642,7 @@ const worker_handler_module = {
     SetSubsystemNumber,
     SetTimeoutProgress,
     SendProbabilityStats,
+    OutputAnyError,
     parse_probability_list,
     do_print,
 };
@@ -1055,7 +1057,7 @@ function tile_select_any_f(e) {
         keybind_map.set(ch, assign_selected_f.bind({ tile, selected_tile, set_undo_buffer: true }));
     }
     keybind_map.set('Delete', assign_selected_f.bind({ tile: MsType.unknown, selected_tile, set_undo_buffer: true }));
-    if (selected_tile.type == SelectedTile.One && select_probability.value == 'Global' && !prob_window.classList.contains('window-hide')) {
+    if (selected_tile.type == SelectedTile.One && !prob_window.classList.contains('window-hide')) {
         calculate_worker.postMessage(['f', 'CalculateTileStats',
             selected_tile.select.x, selected_tile.select.y, parseInt(gm_count.value), include_flags.checked
         ]);
@@ -1953,6 +1955,7 @@ function play_seed_manual_f() {
     play_seed.disabled = !play_seed_manual.checked;
 }
 let prob_chart;
+let prob_chart_default_text;
 let prob_desc;
 let prob_exclude_mine;
 let prob_window;
@@ -1964,6 +1967,7 @@ function hide_prob_f(e) {
     WasmExports.CancelProbability();
     clearInterval(play_obj.probability_interval);
     play_obj.probability_interval = null;
+    prob_chart.textContent = prob_chart_default_text;
     prob_window.classList.add('window-hide');
 }
 //Frequency format [0-tile, 1-tile, 2-tile, ... 7-tile, 8-tile, mine, total].
@@ -2003,16 +2007,15 @@ function SendProbabilityStats(arr, tile_i, is_float_arr) {
             }
         } else {
             if (!is_float_arr) {
-                if (i != 9) {
+                if (i != 9)
                     perc_str = `${format_percentage(arr[i], arr[10] - arr[9], 9, 10)}%`;
-                } else {
+                else
                     perc_str = `${format_percentage(0, 1, 9, 10)}%`;
-                }
             } else {
                 let perc = 0;
-                if (i != 9) {
-                    perc = arr[i] / (1 - arr[9]) * 100;
-                }
+                if (i != 9)
+                    if (arr[9] != 1)
+                        perc = arr[i] / (1 - arr[9]) * 100;
                 perc_str = `${perc.toFixed(10)}%`;
             }
         }
@@ -2261,7 +2264,7 @@ class Play {
     }
     start_play(this_i) {
         const err_slice_ptr = WasmExports.MinesweeperInitEmpty(this.num_mines, this.width, this.height, this_i);
-        if (output_any_error(err_slice_ptr)) {
+        if (OutputAnyError(err_slice_ptr)) {
             this.state = Play.STATE_WASM_ERROR;
             return;
         }
@@ -2592,7 +2595,7 @@ class Play {
             return;
         }
         const err_slice_ptr = WasmExports.MinesweeperInitBoard(parseInt(gm_count.value), include_flags.checked);
-        if (output_any_error(err_slice_ptr)) {
+        if (OutputAnyError(err_slice_ptr)) {
             this.state = Play.STATE_WASM_ERROR;
             return;
         }
@@ -2617,7 +2620,7 @@ class Play {
         mem_view.set(seed_te, 0);
         const err_slice_ptr = WasmExports.ParseMineSeed(alloc_ptr, len);
         WasmExports.WasmFree(alloc_ptr);
-        if (output_any_error(err_slice_ptr)) return;
+        if (OutputAnyError(err_slice_ptr)) return;
         play_board.style.setProperty('--num-columns', WasmExports.ParsedWidth());
         this.init_create_board(WasmExports.ParsedWidth(), WasmExports.ParsedHeight(), WasmExports.ParsedNumMines());
         this.reset_board(Play.state_probability_else(Play.STATE_BEGIN_CUSTOM));
@@ -2675,7 +2678,7 @@ function copy_shared(addr, len) {
     copy_ab_view.set(buffer_view, 0);
     return TD.decode(copy_ab_view);
 }
-function output_any_error(err_slice_ptr) {
+function OutputAnyError(err_slice_ptr) {
     if (err_slice_ptr !== 0) {
         const err_msg_dv = new DataView(WasmMemory.buffer, err_slice_ptr, StringSlice.$size);
         const err_msg_ptr = err_msg_dv.getUint32(StringSlice.ptr.offset, true);

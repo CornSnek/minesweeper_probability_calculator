@@ -18,7 +18,8 @@ function SetTimeoutProgress(subsystem_id, progress) {
     postMessage(['SetTimeoutProgress', subsystem_id, progress]);
 }
 function CalculateTileStats(x, y, gm_count, include_flags) {
-    WasmExports.CalculateTileStats(x, y, gm_count, include_flags);
+    const err_slice_ptr = WasmExports.CalculateTileStats(x, y, gm_count, include_flags);
+    postMessage(['OutputAnyError', err_slice_ptr]);
 }
 function ReturnTileStats(f_ptr, tile_i) {
     const arr = new Float64Array(WasmMemory.buffer, f_ptr, 10);

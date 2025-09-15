@@ -29,15 +29,18 @@ pub const CalculatedMap = struct {
     calculate_array: shared.CalculateArray,
     mm_whole: minesweeper.MinesweeperMatrix,
     mm_subsystems: []minesweeper.MinesweeperMatrix,
-    last_calculate_str: ?[]u8 = null,
+    last_calculate_str: ?[]u8,
+    edited: bool,
     pub const empty: CalculatedMap = .{
         .map_parser = null,
         .calculate_array = .init_error(.unknown),
         .mm_whole = .empty,
         .mm_subsystems = &.{},
         .last_calculate_str = null,
+        .edited = false,
     };
     pub fn is_probability_calculated(self: CalculatedMap) bool {
+        if (self.edited) return false;
         if (self.calculate_array.status != .ok) return false;
         for (self.calculate_array.ptr[0..self.calculate_array.len]) |*c|
             if (c.status != .ok) return false;
@@ -50,7 +53,8 @@ pub const CalculatedMap = struct {
             self.deinit_all(allocator);
             self.* = other.*;
             other.* = .empty;
-            other.*.map_parser = mp_clone;
+            other.map_parser = mp_clone;
+            other.edited = false;
             return true;
         }
         return false;
@@ -107,6 +111,7 @@ export fn QueryTile(x: usize, y: usize) usize {
 }
 /// Returns true if error.
 export fn SetTile(x: usize, y: usize, tile: usize) bool {
+    cm.edited = true;
     if (cm.map_parser) |*mp| {
         mp.set_tile(x, y, tile) catch |e| {
             switch (e) {
@@ -178,6 +183,7 @@ fn stringify_matrix(
     return results;
 }
 export fn CalculateProbability() [*c]shared.CalculateArray {
+    cm.edited = false;
     defer @atomicStore(bool, &CancelCalculation, false, .release);
     var cmp_calculate_str: []u8 = undefined;
     if (cm.map_parser) |mp| {
@@ -446,10 +452,11 @@ const AdjMinecountMap = struct {
     fn shift(self: *AdjMinecountMap, allocator: std.mem.Allocator, by: usize) !void {
         if (by == 0) return;
         for (0..9 - by) |old_i| {
-            const new_i = old_i + by;
+            const rev_i = 9 - by - old_i - 1;
+            const new_i = rev_i + by;
             self.map[new_i].deinit(allocator);
-            self.map[new_i] = self.map[old_i];
-            self.map[old_i] = try .init(allocator, 0);
+            self.map[new_i] = self.map[rev_i];
+            self.map[rev_i] = try .init(allocator, 0);
         }
     }
     //To add all other adj_mm.
@@ -600,7 +607,7 @@ fn calculate_tile_stats(x: usize, y: usize, global_mine_count: isize, include_mi
                 }
                 var num_na_mine: usize = 0;
                 for (tmd_tst[0..tmd.len]) |tst| {
-                    if (tst == .na_mine) num_na_mine = 0;
+                    if (tst == .na_mine) num_na_mine += 1;
                 }
                 try unknown_adj_mm.shift(wasm_allocator, num_na_mine);
                 //At most 4 subsystems may be read in adjacent tile stats.
@@ -666,8 +673,8 @@ fn calculate_tile_stats(x: usize, y: usize, global_mine_count: isize, include_mi
                 try unknown_conv_adj_mm.multiply(wasm_allocator, &leftover_ss_bui);
                 try total_adj_mm.add(wasm_allocator, &unknown_conv_adj_mm);
             }
-        } else {
-            //
+        } else if (middle_tst == .na_mine) {
+            try total_adj_mm.map[AdjMinecountMap.IDX_MINE].add_one(wasm_allocator);
         }
         std.log.warn("total_adj_mm: {f}\n", .{total_adj_mm});
         var sum_bui: big_number.BigUInt = try .init(wasm_allocator, 0);
@@ -678,21 +685,25 @@ fn calculate_tile_stats(x: usize, y: usize, global_mine_count: isize, include_mi
         for (0..10) |m|
             tile_stats_now[m] = total_adj_mm.map[m].to_float(f64) / sum_bui_float;
         ReturnTileStats(&tile_stats_now, y * width + x);
+    } else {
+        const err_msg = std.fmt.allocPrint(wasm_allocator, "Board has been edited. Use 'Calculate Probability' again to remove this error.", .{}) catch return error.OutOfMemory;
+        rng.add_error_slice(err_msg);
+        return error.InvalidBoardData;
     }
 }
-export fn CalculateTileStats(x: usize, y: usize, global_mine_count: isize, include_mine_flags: bool) void {
+export fn CalculateTileStats(x: usize, y: usize, global_mine_count: isize, include_mine_flags: bool) [*c]StringSlice {
+    defer @import("wasm_print.zig").FlushPrint(false);
     calculate_tile_stats(x, y, global_mine_count, include_mine_flags) catch |e| {
         switch (e) {
             error.OutOfMemory => {
                 @panic("Allocation error.");
             },
             error.InvalidBoardData => {
-                std.log.err("{s}\n", .{rng.error_slice.slice()});
-                @import("wasm_jsalloc.zig").WasmFree(rng.error_slice.ptr);
+                return &rng.error_slice;
             },
         }
     };
-    @import("wasm_print.zig").FlushPrint(false);
+    return 0;
 }
 pub extern fn ClearResults() void;
 pub extern fn AppendResults([*c]const u8, usize) void;

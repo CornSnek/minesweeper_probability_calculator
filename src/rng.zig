@@ -10,7 +10,7 @@ const MineFrequencyConvolute = @import("minesweeper.zig").MinesweeperMatrix.Mine
 const PlayProbabilityStatus = @import("shared.zig").PlayProbabilityStatus;
 const FStruct = @import("shared.zig").FStruct;
 pub var error_slice: StringSlice = .empty;
-fn add_error_slice(err_msg: []u8) void {
+pub fn add_error_slice(err_msg: []u8) void {
     wasm_jsalloc.slice_to_js(err_msg) catch {
         wasm_allocator.free(err_msg);
         allocation_error();
