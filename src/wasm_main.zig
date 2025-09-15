@@ -347,7 +347,6 @@ const LocationHMCtx = struct {
 /// Hypergeometric distribution. exclude_one is used whenever a current tile is not an adjacent tile (always safe)
 /// in order to count region mines correctly.
 fn hg_numerator(exclude_one: bool, bd: rng.BoardData, leftover_m: u32, r_m: u32, r: u32) !big_number.BigUInt {
-    std.debug.assert(r != 0);
     if (leftover_m >= r_m) {
         var res_bui = try big_number.bui_comb(wasm_allocator, r, r_m);
         errdefer res_bui.deinit(wasm_allocator);
@@ -581,24 +580,25 @@ fn calculate_tile_stats(x: usize, y: usize, global_mine_count: isize, include_mi
                 }
             }
         }
+        var num_unknowns: usize = 0;
+        for (tmd_tst) |tst| {
+            if (tst == .na_unknown) num_unknowns += 1;
+        }
         var total_adj_mm: AdjMinecountMap = try .init(wasm_allocator);
         defer total_adj_mm.deinit(wasm_allocator);
-        if (middle_tst == .na_unknown) {
+        if (middle_tst == .na_unknown or middle_tst == .na_safe) {
             for (mfcs.items) |*mfc| {
                 const mines_left: u32 = @truncate(@as(usize, @bitCast(bd.adj_mine_count)) - mfc.m);
-                std.log.debug("mines_left: {} mfc.m: {}\n", .{ mines_left, mfc.m });
-                var num_unknowns: usize = 0;
-                for (tmd_tst) |tst| {
-                    if (tst == .na_unknown) num_unknowns += 1;
-                }
                 //Sum of unknown_adj_mm should be comb(#'non-adjacent tiles', 'mines left per solutions').
                 var unknown_adj_mm: AdjMinecountMap = try .init(wasm_allocator);
                 defer unknown_adj_mm.deinit(wasm_allocator);
                 for (0..num_unknowns + 1) |r_m| {
                     unknown_adj_mm.map[r_m].deinit(wasm_allocator);
-                    unknown_adj_mm.map[r_m] = try hg_numerator(true, bd, mines_left, @truncate(r_m), @truncate(num_unknowns + 1));
+                    //Normal hypergeometric if .na_safe, otherwise altered hypergeometric if .na_unknown (+1 tile that should always be safe)
+                    const unknown_adj = @intFromBool(middle_tst == .na_unknown);
+                    unknown_adj_mm.map[r_m] = try hg_numerator(middle_tst == .na_unknown, bd, mines_left, @truncate(r_m), @truncate(num_unknowns + unknown_adj));
                 }
-                {
+                if (middle_tst == .na_unknown) {
                     const non_adj_tiles: u32 = @truncate(@as(usize, @bitCast(bd.non_adjacent_tiles)));
                     if (non_adj_tiles != 0 and mines_left != 0) {
                         unknown_adj_mm.map[AdjMinecountMap.IDX_MINE].deinit(wasm_allocator);

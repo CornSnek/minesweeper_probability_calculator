@@ -153,6 +153,7 @@ pub const BigUInt = struct {
                 self.bytes = bui_arr[1].bytes;
             },
         }
+        self.trim();
     }
     ///Pad with zeroes
     pub fn pad(self: *BigUInt, allocator: std.mem.Allocator, min_bytes: usize) !void {
