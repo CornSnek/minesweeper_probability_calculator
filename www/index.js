@@ -510,6 +510,7 @@ async function init() {
         } else {
             flash_message(FLASH_SUCCESS, 'Percentage is calculated including mine (M) frequency.', 5000);
         }
+        SendProbabilityStats(null, null, null);
     };
     play_seed_manual.onchange = play_seed_manual_f;
     play_seed_manual_f();
@@ -1970,8 +1971,21 @@ function hide_prob_f(e) {
     prob_chart.textContent = prob_chart_default_text;
     prob_window.classList.add('window-hide');
 }
+class SPSCache {
+    constructor() {
+        this.is_float = null;
+        this.arr = null;
+        this.tile_i = null;
+    }
+}
+const sps_cache = new SPSCache();
 //Frequency format [0-tile, 1-tile, 2-tile, ... 7-tile, 8-tile, mine, total].
 function SendProbabilityStats(arr, tile_i, is_float_arr) {
+    if (arr != null) {
+        sps_cache.is_float = is_float_arr;
+        sps_cache.arr = arr;
+        sps_cache.tile_i = tile_i;
+    }
     const p_labels = ['0', '1', '2', '3', '4', '5', '6', '7', '8', 'M'];
     const p_colors = [
         '#bfbfbf', '#0000ff', '#008000',
@@ -1999,23 +2013,23 @@ function SendProbabilityStats(arr, tile_i, is_float_arr) {
         const p_label = p_labels[i];
         let perc_str;
         if (!prob_exclude_mine.checked) {
-            if (!is_float_arr) {
-                perc_str = `${format_percentage(arr[i], arr[10], 9, 10)}%`;
+            if (!sps_cache.is_float) {
+                perc_str = `${format_percentage(sps_cache.arr[i], sps_cache.arr[10], 9, 10)}%`;
             } else {
-                const perc = arr[i] * 100;
+                const perc = sps_cache.arr[i] * 100;
                 perc_str = `${perc.toFixed(10)}%`;
             }
         } else {
-            if (!is_float_arr) {
+            if (!sps_cache.is_float) {
                 if (i != 9)
-                    perc_str = `${format_percentage(arr[i], arr[10] - arr[9], 9, 10)}%`;
+                    perc_str = `${format_percentage(sps_cache.arr[i], sps_cache.arr[10] - sps_cache.arr[9], 9, 10)}%`;
                 else
                     perc_str = `${format_percentage(0, 1, 9, 10)}%`;
             } else {
                 let perc = 0;
                 if (i != 9)
-                    if (arr[9] != 1)
-                        perc = arr[i] / (1 - arr[9]) * 100;
+                    if (sps_cache.arr[9] != 1)
+                        perc = sps_cache.arr[i] / (1 - sps_cache.arr[9]) * 100;
                 perc_str = `${perc.toFixed(10)}%`;
             }
         }
@@ -2023,15 +2037,15 @@ function SendProbabilityStats(arr, tile_i, is_float_arr) {
         const pbar = pbar_container.children[0];
         pbar.style.setProperty('--width', perc_str);
         const plabel = pbar_container.children[1];
-        if (!is_float_arr) {
-            plabel.textContent = `${p_label} (${perc_str}) (${arr[i]} game(s))`;
+        if (!sps_cache.is_float) {
+            plabel.textContent = `${p_label} (${perc_str}) (${sps_cache.arr[i]} game(s))`;
         } else {
             plabel.textContent = `${p_label} (${perc_str})`
         }
     }
     const xy = Play.to_xy(tile_i, columns);
-    if (!is_float_arr) {
-        const total_games = (!prob_exclude_mine.checked) ? arr[10] : arr[10] - arr[9];
+    if (!sps_cache.is_float) {
+        const total_games = (!prob_exclude_mine.checked) ? sps_cache.arr[10] : sps_cache.arr[10] - sps_cache.arr[9];
         prob_desc.textContent = `Selected Tile: (x: ${xy[0]}, y: ${xy[1]}) Total: ${total_games}`;
     } else {
         prob_desc.textContent = `Selected Tile: (x: ${xy[0]}, y: ${xy[1]})`;

@@ -547,9 +547,9 @@ fn calculate_tile_stats(x: usize, y: usize, global_mine_count: isize, include_mi
                 try loc_hm.put(wasm_allocator, tl, .{ .id = mms.tm.ltoid.get(tl).?, .ss = ss });
             }
         }
-        std.log.debug("Clicking tile ({},{})", .{ x, y });
+        std.log.debug("Clicking tile ({},{})\n", .{ x, y });
         for (mfcs.items) |*mfc| {
-            std.log.warn("{} {any} {any}\n", .{ mfc.m, mfc.f.bytes.items, mfc.mds.items });
+            std.log.debug("{} {any} {any}\n", .{ mfc.m, mfc.f.bytes.items, mfc.mds.items });
         }
         const middle_tst: TileStatsType = v: {
             if (loc_hm.get(tmd.middle)) |ssid| {
@@ -565,8 +565,8 @@ fn calculate_tile_stats(x: usize, y: usize, global_mine_count: isize, include_mi
                 }
             }
         };
-        var tmd_tst: [8]TileStatsType = undefined;
-        for (tmd_tst[0..tmd.len], tmd.slice()) |*tst, tl| {
+        var adj_tst: [8]TileStatsType = undefined;
+        for (adj_tst[0..tmd.len], tmd.slice()) |*tst, tl| {
             if (loc_hm.get(tl)) |ssid| {
                 tst.* = .{ .adj = ssid };
             } else {
@@ -581,12 +581,12 @@ fn calculate_tile_stats(x: usize, y: usize, global_mine_count: isize, include_mi
             }
         }
         var num_unknowns: usize = 0;
-        for (tmd_tst) |tst| {
+        for (adj_tst) |tst| {
             if (tst == .na_unknown) num_unknowns += 1;
         }
         var total_adj_mm: AdjMinecountMap = try .init(wasm_allocator);
         defer total_adj_mm.deinit(wasm_allocator);
-        if (middle_tst == .na_unknown or middle_tst == .na_safe) {
+        if (middle_tst != .na_mine) {
             for (mfcs.items) |*mfc| {
                 const mines_left: u32 = @truncate(@as(usize, @bitCast(bd.adj_mine_count)) - mfc.m);
                 //Sum of unknown_adj_mm should be comb(#'non-adjacent tiles', 'mines left per solutions').
@@ -606,14 +606,14 @@ fn calculate_tile_stats(x: usize, y: usize, global_mine_count: isize, include_mi
                     }
                 }
                 var num_na_mine: usize = 0;
-                for (tmd_tst[0..tmd.len]) |tst| {
+                for (adj_tst[0..tmd.len]) |tst| {
                     if (tst == .na_mine) num_na_mine += 1;
                 }
                 try unknown_adj_mm.shift(wasm_allocator, num_na_mine);
                 //At most 4 subsystems may be read in adjacent tile stats.
                 var ss_arr: [4]usize = undefined;
                 var ss_arr_len: usize = 0;
-                for (tmd_tst[0..tmd.len]) |tst| {
+                for (adj_tst[0..tmd.len]) |tst| {
                     if (tst == .adj) {
                         for (ss_arr) |ss| {
                             if (tst.adj.ss == ss) break;
@@ -647,23 +647,37 @@ fn calculate_tile_stats(x: usize, y: usize, global_mine_count: isize, include_mi
                 defer conv_adj_mm.deinit(wasm_allocator);
                 conv_adj_mm.map[0].reset(1); //0th is 1 to convolve properly.
                 for (ss_sbr_arr.items) |*ss_sbr| {
-                    var this_adj_bits: [8]usize = undefined;
+                    var ss_adj_ids: [8]usize = undefined;
                     var tab_len: usize = 0;
-                    for (tmd_tst[0..tmd.len]) |tst| {
+                    for (adj_tst[0..tmd.len]) |tst| {
                         if (tst == .adj) {
                             if (tst.adj.ss == ss_sbr.ss) {
-                                this_adj_bits[tab_len] = tst.adj.id;
+                                ss_adj_ids[tab_len] = tst.adj.id;
                                 tab_len += 1;
                             }
                         }
                     }
                     var adj_mm: AdjMinecountMap = try .init(wasm_allocator);
                     defer adj_mm.deinit(wasm_allocator);
-                    for (ss_sbr.sbr.begin..ss_sbr.sbr.end) |i| {
-                        const range_bits = cm.mm_subsystems[ss_sbr.ss].sb.get_range_bits(i);
-                        var num_mines: usize = 0;
-                        for (this_adj_bits[0..tab_len]) |bit| num_mines += sb_bit(range_bits, bit);
-                        try adj_mm.map[num_mines].add_one(wasm_allocator);
+                    if (middle_tst == .adj and middle_tst.adj.ss == ss_sbr.ss) {
+                        const middle_id = middle_tst.adj.id; //If middle is .adj and is a mine, add one to IDX_MINE instead.
+                        for (ss_sbr.sbr.begin..ss_sbr.sbr.end) |i| {
+                            const range_bits = cm.mm_subsystems[ss_sbr.ss].sb.get_range_bits(i);
+                            if (sb_bit(range_bits, middle_id) == 1) {
+                                try adj_mm.map[AdjMinecountMap.IDX_MINE].add_one(wasm_allocator);
+                                continue;
+                            }
+                            var num_mines: usize = 0;
+                            for (ss_adj_ids[0..tab_len]) |bit| num_mines += sb_bit(range_bits, bit);
+                            try adj_mm.map[num_mines].add_one(wasm_allocator);
+                        }
+                    } else {
+                        for (ss_sbr.sbr.begin..ss_sbr.sbr.end) |i| {
+                            const range_bits = cm.mm_subsystems[ss_sbr.ss].sb.get_range_bits(i);
+                            var num_mines: usize = 0;
+                            for (ss_adj_ids[0..tab_len]) |bit| num_mines += sb_bit(range_bits, bit);
+                            try adj_mm.map[num_mines].add_one(wasm_allocator);
+                        }
                     }
                     try conv_adj_mm.convolve(wasm_allocator, &adj_mm);
                 }
@@ -673,14 +687,15 @@ fn calculate_tile_stats(x: usize, y: usize, global_mine_count: isize, include_mi
                 try unknown_conv_adj_mm.multiply(wasm_allocator, &leftover_ss_bui);
                 try total_adj_mm.add(wasm_allocator, &unknown_conv_adj_mm);
             }
-        } else if (middle_tst == .na_mine) {
+        } else {
             try total_adj_mm.map[AdjMinecountMap.IDX_MINE].add_one(wasm_allocator);
         }
-        std.log.warn("total_adj_mm: {f}\n", .{total_adj_mm});
+        std.log.debug("total_adj_mm: {f}\n", .{total_adj_mm});
         var sum_bui: big_number.BigUInt = try .init(wasm_allocator, 0);
         defer sum_bui.deinit(wasm_allocator);
         for (0..10) |m|
             try sum_bui.add(wasm_allocator, &total_adj_mm.map[m]);
+        std.log.debug("sum: {f}\n", .{sum_bui});
         const sum_bui_float = sum_bui.to_float(f64);
         for (0..10) |m|
             tile_stats_now[m] = total_adj_mm.map[m].to_float(f64) / sum_bui_float;
