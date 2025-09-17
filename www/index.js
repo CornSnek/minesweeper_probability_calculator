@@ -42,6 +42,7 @@ let show_solution_check;
 let show_solution_seed;
 let show_solution_subsystem;
 let show_solution_output;
+let calculate_on_change;
 let rows = null;
 let columns = null;
 let keybind_map = new Map();
@@ -209,6 +210,7 @@ async function init() {
     prob_exclude_mine = document.getElementById('prob-exclude-mine');
     prob_window = document.getElementById('prob-window');
     prob_window_close = document.getElementById('prob-window-close');
+    calculate_on_change = document.getElementById('calculate-on-change');
     const root_comp = getComputedStyle(document.documentElement);
     tile_colors.neutral = root_comp.getPropertyValue('--ms-probability');
     tile_colors.mine = root_comp.getPropertyValue('--ms-probability-mine');
@@ -415,6 +417,10 @@ async function init() {
     columns_num.onclick = deselect_tiles_f;
     rows_num.onclick = deselect_tiles_f;
     gm_count.onclick = deselect_tiles_f;
+    gm_count.onchange = e => {
+        deselect_tiles_f(e);
+        if (calculate_on_change.checked) calculate_probability_f(e);
+    };
     generate_grid.onclick = e => {
         if (web_state != STATE_IDLE && web_state != STATE_PLAY) return;
         if (!columns_num.validity.valid || !rows_num.validity.valid) {
@@ -500,6 +506,12 @@ async function init() {
                 play_new_game.disabled = true;
                 play_new_game_with_seed.disabled = true;
                 break;
+        }
+    };
+    calculate_on_change.onchange = e => {
+        if (calculate_on_change.checked) {
+            calculate_probability_f(e);
+            flash_message(FLASH_SUCCESS, 'Calculate On Change automatically calls Calculate Probability when updating tiles, mine count, or include flags.', 5000);
         }
     };
     play_new_game.disabled = play_gamemode.value == 'Probability';
@@ -1058,6 +1070,9 @@ function tile_select_any_f(e) {
         keybind_map.set(ch, assign_selected_f.bind({ tile, selected_tile, set_undo_buffer: true }));
     }
     keybind_map.set('Delete', assign_selected_f.bind({ tile: MsType.unknown, selected_tile, set_undo_buffer: true }));
+    update_bar_graph_f();
+}
+function update_bar_graph_f() {
     if (selected_tile.type == SelectedTile.One && !prob_window.classList.contains('window-hide')) {
         calculate_worker.postMessage(['f', 'CalculateTileStats',
             selected_tile.select.x, selected_tile.select.y, parseInt(gm_count.value), include_flags.checked
@@ -1169,9 +1184,17 @@ function update_tile_div(div, use_is_clicked, half_transparent) {
     img.classList.add('img-tile');
     if (half_transparent) img.style.opacity = 0.5;
 }
+let uoc_handler = null;
 function set_tile(x, y, ms_type) {
     WasmExports.SetTile(x, y, ms_type);
     update_tile(x, y);
+    if (uoc_handler == null) //Debounce when this is called more than once.
+        uoc_handler = setTimeout(
+            () => {
+                if (calculate_on_change.checked) calculate_probability_f(undefined);
+                uoc_handler = null;
+            }
+        );
 }
 function update_tile(x, y) {
     console.assert(columns !== null, 'columns have not been set yet');
@@ -1187,7 +1210,7 @@ function calculate_probability_f(e) {
     if (web_state == STATE_IDLE) {
         hide_flash();
         start_progress();
-        deselect_tiles_f();
+        if (!calculate_on_change.checked) deselect_tiles_f();
         calculate_worker.postMessage(['f', 'CalculateProbability']);
         SetTimeoutProgress(0, 0.0);
         calculate_probability.innerHTML = `Cancel Calculation ${shift_p_enter}`;
@@ -1552,7 +1575,10 @@ class SolutionBits {
 let solution_bits = new SolutionBits();
 function parse_probability_list(c_arr_ptr) {
     end_progress();
-    deselect_tiles_f();
+    if (!calculate_on_change.checked)
+        deselect_tiles_f();
+    else
+        update_bar_graph_f();
     clear_all_probability();
     show_solution_check.disabled = false;
     show_solution_check.checked = false;
@@ -1989,6 +2015,7 @@ function SendProbabilityStats(arr, tile_i, is_float_arr) {
         sps_cache.arr = arr;
         sps_cache.tile_i = tile_i;
     }
+    if (sps_cache.arr === null) return;
     const p_labels = ['0', '1', '2', '3', '4', '5', '6', '7', '8', 'M'];
     const p_colors = [
         '#bfbfbf', '#0000ff', '#008000',
