@@ -503,7 +503,7 @@ async function init() {
     calculate_on_change.onchange = e => {
         if (calculate_on_change.checked) {
             calculate_probability_f(e);
-            flash_message(FLASH_SUCCESS, 'Calculate On Change automatically calls Calculate Probability when updating tiles, mine count, or include flags.', 5000);
+            flash_message(FLASH_SUCCESS, 'Calculate On Change automatically calls Calculate Probability when updating tiles or some configurations.', 5000);
         }
     };
     show_pbg.onclick = show_pbg_f;
@@ -558,6 +558,7 @@ async function init() {
     select_probability.onchange = e => {
         const prob_type = e.target.value;
         flash_message(FLASH_SUCCESS, (prob_type !== 'Global') ? 'Local shows only the probability for adjacent tiles' : 'Global shows the probability of the whole board, where Mine Count is considered', 5000);
+        if (calculate_on_change.checked) calculate_probability_f(e);
     };
     include_flags.onchange = e => flash_message(FLASH_SUCCESS, e.target.checked ? 'Flags and mines are counted in Mine Count to consider the total number of mines left + flags + mines in a board.' : 'Flags and mines are not counted in Mine Count to consider only the number of mines left.', 5000);
     parse_screenshot.onclick = pre_parse_screenshot_board;
