@@ -588,6 +588,7 @@ fn calculate_tile_stats(x: usize, y: usize, global_mine_count: isize, include_mi
         defer total_adj_mm.deinit(wasm_allocator);
         if (middle_tst != .na_mine) {
             for (mfcs.items) |*mfc| {
+                std.log.debug("mds: {any}\n", .{mfc.mds.items});
                 const mines_left: u32 = @truncate(@as(usize, @bitCast(bd.adj_mine_count)) - mfc.m);
                 //Sum of unknown_adj_mm should be comb(#'non-adjacent tiles', 'mines left per solutions').
                 var unknown_adj_mm: AdjMinecountMap = try .init(wasm_allocator);
@@ -610,6 +611,7 @@ fn calculate_tile_stats(x: usize, y: usize, global_mine_count: isize, include_mi
                     if (tst == .na_mine) num_na_mine += 1;
                 }
                 try unknown_adj_mm.shift(wasm_allocator, num_na_mine);
+                std.log.debug("unknown_adj_mm: {f}\n", .{unknown_adj_mm});
                 //At most 4 subsystems may be read in adjacent tile stats.
                 var ss_arr: [4]usize = undefined;
                 var ss_arr_len: usize = 0;
@@ -679,12 +681,15 @@ fn calculate_tile_stats(x: usize, y: usize, global_mine_count: isize, include_mi
                             try adj_mm.map[num_mines].add_one(wasm_allocator);
                         }
                     }
+                    std.log.debug("adj_mm for ss #{}: {f}\n", .{ ss_sbr.ss, adj_mm });
                     try conv_adj_mm.convolve(wasm_allocator, &adj_mm);
                 }
+                std.log.debug("conv_adj_mm: {f}\nmult_ss: {f}\n", .{ conv_adj_mm, leftover_ss_bui });
                 var unknown_conv_adj_mm: AdjMinecountMap = try unknown_adj_mm.clone(wasm_allocator);
                 defer unknown_conv_adj_mm.deinit(wasm_allocator);
                 try unknown_conv_adj_mm.convolve(wasm_allocator, &conv_adj_mm);
                 try unknown_conv_adj_mm.multiply(wasm_allocator, &leftover_ss_bui);
+                std.log.debug("result: {f}\n\n", .{unknown_conv_adj_mm});
                 try total_adj_mm.add(wasm_allocator, &unknown_conv_adj_mm);
             }
         } else {

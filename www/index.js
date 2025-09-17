@@ -542,7 +542,7 @@ async function init() {
     document.querySelectorAll('#patterns-body .tile-template, #probability-body .tile-template').forEach(div => {
         create_board_pattern(div, div.dataset.ncolumns, div.dataset.str);
         div.onclick = e => {
-            const copy_data = SelectedTile.ClipboardHeader + div.dataset.str.replace(/[cv]([.?]|\(.*?\))/g, 'c');
+            const copy_data = SelectedTile.ClipboardHeader + div.dataset.str.replace(/[cv]([.?!]|\(.*?\))/g, 'c');
             navigator.clipboard.writeText(copy_data)
                 .then(() => flash_message(FLASH_SUCCESS, 'Copied to Clipboard', 3000))
                 .catch(err => console.warn('Clipboard copy failed: ' + err));
@@ -1742,6 +1742,9 @@ function create_board_pattern(div_parent, num_columns, tile_string) {
                 } else {
                     console.error(`Character '${this_ch}' is only used for unknowns for string '${tile_string}' at index #${ch_i}`);
                 }
+                ch_i++;
+            } else if (next_ch == '!') {
+                tile_div.classList.add('tile-mine');
                 ch_i++;
             } else if (next_ch == '(') {
                 if (tile_enum == MsType.unknown) {

@@ -588,7 +588,7 @@
           <br><br>
           With the information of the separate systems, it doesn't tell the number of solutions per mine number for a tile and the whole board.
           In order to get the total number of solutions and number of mines of the whole board rather, discrete convolution would be used.
-          The convolution formula to get \( MF_{G_G}(m) \), where \( BS = \{1, 2, 3, \dots\} \) describes the subsystems is the following.
+          The convolution formula to get \( MF_{G_G}(m) \), where \( BS = \{0, 1, 2, \dots\} \) describes the subsystems is the following.
           \[
             MF_{G_t}(m) = \sum_{ S \in BS \setminus \{t\} }{ (MF_{G_t} \ast MF_{G_S})(m) }
           \]
@@ -597,48 +597,48 @@
           Also, \( n_t \) is multiplied from the first map function with \( n'_t \) from another map function.
           The function below descibes a dictionary of the convolution of a \( (m_t,m'_t) \) pair and the \( (m,n) \) sum/multiplication pair.
           \[
-            CD(MF_1,MF_2) =
+            CD(MF_0,MF_1) =
             \left\{
             \begin{array}{lll}
-              (m_0,m'_0) : & \{ m: m_0 + m'_0, & n: MF_1(m_0) \cdot MF_2(m'_0) \}\\
-              (m_0,m'_1) : & \{ m: m_0 + m'_1, & n: MF_1(m_0) \cdot MF_2(m'_1) \}\\
-              (m_0,m'_2) : & \{ m: m_0 + m'_2, & n: MF_1(m_0) \cdot MF_2(m'_2) \}\\
+              (m_0,m'_0) : & \{ m: m_0 + m'_0, & n: MF_0(m_0) \cdot MF_1(m'_0) \}\\
+              (m_0,m'_1) : & \{ m: m_0 + m'_1, & n: MF_0(m_0) \cdot MF_1(m'_1) \}\\
+              (m_0,m'_2) : & \{ m: m_0 + m'_2, & n: MF_0(m_0) \cdot MF_2(m'_2) \}\\
                                   & \vdots     & \vdots \\
-              (m_1,m'_0) : & \{ m: m_1 + m'_0, & n: MF_1(m_1) \cdot MF_2(m'_0) \}\\
-              (m_1,m'_0) : & \{ m: m_1 + m'_1, & n: MF_1(m_1) \cdot MF_2(m'_1) \}\\
+              (m_1,m'_0) : & \{ m: m_1 + m'_0, & n: MF_0(m_1) \cdot MF_1(m'_0) \}\\
+              (m_1,m'_0) : & \{ m: m_1 + m'_1, & n: MF_0(m_1) \cdot MF_1(m'_1) \}\\
                                   & \vdots     & \vdots \\
-              (m_a,m'_b) : & \{ m: m_a + m'_b, & n: MF_1(m_a0) \cdot MF_2(m'_b) \}\\
+              (m_a,m'_b) : & \{ m: m_a + m'_b, & n: MF_0(m_a0) \cdot MF_1(m'_b) \}\\
             \end{array}
             \right\}
           \]
           We need to sum all \( m_t + m'_t \) pairs that are equal together.
-          The whole convolution formula for some map functions \( MF_1 \) and \( MF_2 \) can finally be defined as the following using Iverson Bracket notation.
+          The whole convolution formula for some map functions \( MF_0 \) and \( MF_1 \) can finally be defined as the following using Iverson Bracket notation.
           \[
-              (MF_1 \ast MF_2)(m) = \sum_{(m_i,m'_j) \text{ s.t. } m_i \in S_{M_1}, m'_j \in S_{M_2} }{[m_i + m'_j = m] \cdot MF_1(m_i) \cdot MF_2(m'_j)}
+              (MF_0 \ast MF_1)(m) = \sum_{(m_i,m'_j) \text{ s.t. } m_i \in S_{M_0}, m'_j \in S_{M_1} }{[m_i + m'_j = m] \cdot MF_0(m_i) \cdot MF_1(m'_j)}
           \]
-          The Iverson Bracket notation \( [m_i + m'_j = m] \) means that for every \( m_i + m'_j \) that sums to \( m \), it is 1. Otherwise it is 0 whether \( m_i + m'_j \neq m \). Sum every same \( m \) with \( n_i * n'_j \) or \( MF_1(m_i) \cdot MF_2(m'_j) \)
+          The Iverson Bracket notation \( [m_i + m'_j = m] \) means that for every \( m_i + m'_j \) that sums to \( m \), it is 1. Otherwise it is 0 whether \( m_i + m'_j \neq m \). Sum every same \( m \) with \( n_i * n'_j \) or \( MF_0(m_i) \cdot MF_1(m'_j) \)
           <br><br>
           Using this, the following formulas would be used to get the total number of solutions per mine number of the whole board.
           \[
             \begin{array}{ll}
-              MF_{G_G}(m) &= \sum_{S \in BS \setminus \{1\}}{(MF_1 \ast MF_{G_S})(m)} \\
+              MF_{G_G}(m) &= \sum_{S \in BS \setminus \{0\}}{(MF_0 \ast MF_{G_S})(m)} \\
+              & = \sum_{S \in BS \setminus \{1\}}{(MF_1 \ast MF_{G_S})(m)} \\
               & = \sum_{S \in BS \setminus \{2\}}{(MF_2 \ast MF_{G_S})(m)} \\
-              & = \sum_{S \in BS \setminus \{3\}}{(MF_3 \ast MF_{G_S})(m)} \\
               & \vdots
             \end{array}
           \]
-          The first map function \( MF_1 \) can just be used as the other subsystems 2, 3, 4, ... would result in the same calculation.
+          The 0th map function \( MF_0 \) can just be used as the other subsystems 1, 2, 3, ... would result in the same calculation.
           <br>
           An example calculation of \( MF_{G_G} \) is:
           \[
             \begin{array}{ll}
-              CD(MF_{G_1},MF_{G_2}) &=
+              CD(MF_{G_0},MF_{G_1}) &=
               \left\{
               \begin{array}{l}
-                (1,3) : \{ m: 1 + 3, n: MF_{G_1}(1) \cdot MF_{G_2}(3) \}\\
-                (1,4) : \{ m: 1 + 4, n: MF_{G_1}(1) \cdot MF_{G_2}(4) \}\\
-                (2,3) : \{ m: 2 + 3, n: MF_{G_1}(2) \cdot MF_{G_2}(3) \}\\
-                (2,4) : \{ m: 2 + 4, n: MF_{G_1}(2) \cdot MF_{G_2}(4) \}\\
+                (1,3) : \{ m: 1 + 3, n: MF_{G_0}(1) \cdot MF_{G_1}(3) \}\\
+                (1,4) : \{ m: 1 + 4, n: MF_{G_0}(1) \cdot MF_{G_1}(4) \}\\
+                (2,3) : \{ m: 2 + 3, n: MF_{G_0}(2) \cdot MF_{G_1}(3) \}\\
+                (2,4) : \{ m: 2 + 4, n: MF_{G_0}(2) \cdot MF_{G_1}(4) \}\\
               \end{array}
               \right\}\\
             &=
@@ -679,11 +679,11 @@
           Here is an example calculation for tile 0.
           \[
               \begin{array}{ll}
-                CD(MF_0,MF_{G_2}) &=
+                CD(MF_0,MF_{G_1}) &=
                 \left\{
                 \begin{array}{l}
-                  (2,3) : \{ m: 2 + 3, n: MF_0(2) \cdot MF_{G_2}(3) \}\\
-                  (2,4) : \{ m: 2 + 4, n: MF_0(2) \cdot MF_{G_2}(4) \}\\
+                  (2,3) : \{ m: 2 + 3, n: MF_0(2) \cdot MF_{G_1}(3) \}\\
+                  (2,4) : \{ m: 2 + 4, n: MF_0(2) \cdot MF_{G_1}(4) \}\\
                 \end{array}
                 \right\}\\
               &=
@@ -693,7 +693,7 @@
                   (2,4) : \{ m: 6, n: 24 \}\\
                 \end{array}
                 \right\}\\
-                (MF_0 \ast MF_{G_2})(m) &=
+                (MF_0 \ast MF_{G_1})(m) &=
                 \begin{cases}
                 16 & \text{if } m = 5 \\
                 24 & \text{if } m = 6 \\
@@ -706,21 +706,21 @@
             \begin{array}{ll}
               \text{GlobalProbability}_A(0) &= 
               \frac{
-                \displaystyle \sum_{ m_0 \in S_{(M_0 \ast M_{G_2})} } (MF_0 \ast MF_{G_2})(m_0) \cdot \binom{U_{NA}}{M_G - m_0}
+                \displaystyle \sum_{ m_0 \in S_{(M_0 \ast M_{G_1})} } (MF_0 \ast MF_{G_1})(m_0) \cdot \binom{U_{NA}}{M_G - m_0}
               }{
-                \displaystyle \sum_{ m \in S_{(M_{G_1} \ast M_{G_2})} } (MF_{G_1} \ast MF_{G_2})(m) \cdot \binom{U_{NA}}{M_G - m}
+                \displaystyle \sum_{ m \in S_{(M_{G_0} \ast M_{G_1})} } (MF_{G_0} \ast MF_{G_1})(m) \cdot \binom{U_{NA}}{M_G - m}
               }\\
               &=
                 \frac{
-                  \displaystyle \sum_{ m_0 \in S_{(M_0 \ast M_{G_2})} } (MF_0 \ast MF_{G_2})(m_0) \cdot \binom{5}{9 - m_0}
+                  \displaystyle \sum_{ m_0 \in S_{(M_0 \ast M_{G_1})} } (MF_0 \ast MF_{G_1})(m_0) \cdot \binom{5}{9 - m_0}
                 }{
-                  \displaystyle \sum_{ m \in S_{(M_{G_1} \ast M_{G_2})} } (MF_{G_1} \ast MF_{G_2})(m) \cdot \binom{5}{9 - m}
+                  \displaystyle \sum_{ m \in S_{(M_{G_0} \ast M_{G_1})} } (MF_{G_0} \ast MF_{G_1})(m) \cdot \binom{5}{9 - m}
                 }\\
               &=
                 \frac{
-                  (MF_0 \ast MF_{G_2})(5) \cdot \binom{5}{4} + (MF_0 \ast MF_{G_2})(6) \cdot \binom{5}{3}
+                  (MF_0 \ast MF_{G_1})(5) \cdot \binom{5}{4} + (MF_0 \ast MF_{G_1})(6) \cdot \binom{5}{3}
                 }{
-                  (MF_{G_1} \ast MF_{G_2})(4) \cdot \binom{5}{5} + (MF_{G_1} \ast MF_{G_2})(5) \cdot \binom{5}{4} + (MF_{G_1} \ast MF_{G_2})(6) \cdot \binom{5}{3}
+                  (MF_{G_0} \ast MF_{G_1})(4) \cdot \binom{5}{5} + (MF_{G_0} \ast MF_{G_1})(5) \cdot \binom{5}{4} + (MF_{G_0} \ast MF_{G_1})(6) \cdot \binom{5}{3}
                 }\\
               &=
                 \frac{
@@ -738,6 +738,389 @@
             \end{array}
           \]
           This percentage probability can be verified using the same board and global mine count \( M_G = 9 \).
+        </div>
+        <h3>Number Probabilities (Formulas)</h3>
+        <div>
+          Trying to calculate a specific number tile for adjacent mines is complex. It requires discrete convolution and hypergeometric distribution formulas.
+          This section will try to define tables and formulas that will be used for the next section.
+          <br><br>
+          For Hypergemetric distribution (<b><a href="https://en.wikipedia.org/wiki/Hypergeometric_distribution" target="_blank" rel="noopener noreferrer">https://en.wikipedia.org/wiki/Hypergeometric_distribution</a></b>)
+          , we will only use the numerator part of the formula. Consider the following board below:
+          <br>
+          <br>
+          <div class="tile-template" data-ncolumns="6" data-str="c(R)c(R)c(R)c(N)c(N)c(N),c(R)xc(R)c(N)c(N)c(N),c(R)c(R)c(R)c(N)c(N)c(N),c(N)c(N)c(N)c(N)c(N)c(N)"></div>
+          <br>
+          Let's assume that the tile we are clicking (Green X) is always safe, and there are M total mines. That tile would be from 0 up to 8. #R regions and #N tiles are counted.
+          Let's say m is the exact number of mines that we want to find for the R region, where \(m \in [0,8]\). The formula that counts the number would be the following:
+          \[
+            HG_{all}(N,R,M,m) = \binom{R}{m} \cdot \binom{N-R}{M-m}
+          \]
+          This can be read as multiplying by the combinations of \(m\) mines in the \(R\) region, and then multiply the combinations of leftover mines \(M-m\) with the rest of the board tiles \(N\).
+          But what happens if the tile we are clicking is just an unknown tile. It might be either a mine or a safe tile.
+          <br>
+          <br>
+          <div class="tile-template" data-ncolumns="6" data-str="c(R)c(R)c(R)c(N)c(N)c(N),c(R)cc(R)c(N)c(N)c(N),c(R)c(R)c(R)c(N)c(N)c(N),c(N)c(N)c(N)c(N)c(N)c(N)"></div>
+          <br>
+          We will have to remove the number of combinations that is a mine. Here is an example of \( m=2 \) mines in a region of \( R=9 \), where the middle (as a flag), needs to be subtracted.
+          <br>
+          <br>
+          <div style="display: grid; grid-template-columns: repeat(6, 1fr); gap: 1rem;">
+            <div class="tile-template" data-ncolumns="3" data-str="v.v.c,ccc,ccc"></div>
+            <div class="tile-template" data-ncolumns="3" data-str="v.cv.,ccc,ccc"></div>
+            <div class="tile-template" data-ncolumns="3" data-str="v.cc,v.cc,ccc"></div>
+            <div class="tile-template" data-ncolumns="3" data-str="v.cc,cfc,ccc"></div>
+            <div class="tile-template" data-ncolumns="3" data-str="v.cc,ccv.,ccc"></div>
+            <div class="tile-template" data-ncolumns="3" data-str="v.cc,ccc,v.cc"></div>
+            <div class="tile-template" data-ncolumns="3" data-str="v.cc,ccc,cv.c"></div>
+            <div class="tile-template" data-ncolumns="3" data-str="v.cc,ccc,ccv."></div>
+
+            <div class="tile-template" data-ncolumns="3" data-str="cv.v.,ccc,ccc"></div>
+            <div class="tile-template" data-ncolumns="3" data-str="cv.c,v.cc,ccc"></div>
+            <div class="tile-template" data-ncolumns="3" data-str="cv.c,cfc,ccc"></div>
+            <div class="tile-template" data-ncolumns="3" data-str="cv.c,ccv.,ccc"></div>
+            <div class="tile-template" data-ncolumns="3" data-str="cv.c,ccc,v.cc"></div>
+            <div class="tile-template" data-ncolumns="3" data-str="cv.c,ccc,cv.c"></div>
+            <div class="tile-template" data-ncolumns="3" data-str="cv.c,ccc,ccv."></div>
+
+            <div class="tile-template" data-ncolumns="3" data-str="ccv.,v.cc,ccc"></div>
+            <div class="tile-template" data-ncolumns="3" data-str="ccv.,cfc,ccc"></div>
+            <div class="tile-template" data-ncolumns="3" data-str="ccv.,ccv.,ccc"></div>
+            <div class="tile-template" data-ncolumns="3" data-str="ccv.,ccc,v.cc"></div>
+            <div class="tile-template" data-ncolumns="3" data-str="ccv.,ccc,cv.c"></div>
+            <div class="tile-template" data-ncolumns="3" data-str="ccv.,ccc,ccv."></div>
+
+            <div class="tile-template" data-ncolumns="3" data-str="ccc,v.fc,ccc"></div>
+            <div class="tile-template" data-ncolumns="3" data-str="ccc,v.cv.,ccc"></div>
+            <div class="tile-template" data-ncolumns="3" data-str="ccc,v.cc,v.cc"></div>
+            <div class="tile-template" data-ncolumns="3" data-str="ccc,v.cc,cv.c"></div>
+            <div class="tile-template" data-ncolumns="3" data-str="ccc,v.cc,ccv."></div>
+
+            <div class="tile-template" data-ncolumns="3" data-str="ccc,cfv.,ccc"></div>
+            <div class="tile-template" data-ncolumns="3" data-str="ccc,cfc,v.cc"></div>
+            <div class="tile-template" data-ncolumns="3" data-str="ccc,cfc,cv.c"></div>
+            <div class="tile-template" data-ncolumns="3" data-str="ccc,cfc,ccv."></div>
+
+            <div class="tile-template" data-ncolumns="3" data-str="ccc,ccv.,v.cc"></div>
+            <div class="tile-template" data-ncolumns="3" data-str="ccc,ccv.,cv.c"></div>
+            <div class="tile-template" data-ncolumns="3" data-str="ccc,ccv.,ccv."></div>
+
+            <div class="tile-template" data-ncolumns="3" data-str="ccc,ccc,v.v.c"></div>
+            <div class="tile-template" data-ncolumns="3" data-str="ccc,ccc,v.cv."></div>
+
+            <div class="tile-template" data-ncolumns="3" data-str="ccc,ccc,cv.v."></div>
+          </div>
+          <br>
+          There are a total of 36 combinations with 8 combinations that have a mine/flag in the middle. We have to get \(36 - 8 = 28\). We use another formula below for this problem:
+          \[
+            HG_{exc}(N,R,M,m) = \left( \binom{R}{m} - \binom{R-1}{m-1} \right) \cdot \binom{N-R}{M-m}
+          \]
+          The \( \binom{R-1}{m-1} \) is subtracted because we're removing the number of combinations where the middle is a mine.
+          <br>
+          <br>
+          The following table, described as \( BG \) (bar graph) will be used to calculate the number of combinations where a tile is 0, 1, 2, ..., 7, 8, and M (mine) at index 9.
+          \[
+            BG_x = \left\{x_0,x_1,x_2,x_3,x_4,x_5,x_6,x_7,x_8,x_M\right\}
+          \]
+          We will define some operations for this table that will be used in the next section.
+          <br>
+          <br>
+          For addition: 
+          \[
+            BG_a + BG_b = \left\{a_0 + b_0, a_1 + b_1, a_2 + b_2, a_3 + b_3, a_4 + b_4, a_5 + b_5, a_6 + b_6, a_7 + b_7, a_8 + b_8, a_M + b_M\right\}
+          \]
+          For multiplication (Only a scalar):
+          \[
+            k \cdot BG_x = \left\{k \cdot x_0,k \cdot x_1,k \cdot x_2,k \cdot x_3,k \cdot x_4,k \cdot x_5,k \cdot x_6,k \cdot x_7,k \cdot x_8,k \cdot x_M\right\}
+          \]
+          For indexing:
+          \[
+            BG_x[i] = x_i
+          \]
+          For convolution, only indices 0 through 8 are convolved, while m, or index 9, is defined in a different way.
+          The formula is described below:
+          \[
+            \begin{array}{ll}
+              [BG_a \ast BG_b][m] &= \sum_{(m_i,m'_j) \text{ s.t. } m_i \in BG_a, m'_j \in BG_b }{ [m_i + m'_j = m] \cdot BG_a[m_i] \cdot BG_b[m'_j]}, m \in [0, 8] \\
+              [BG_a \ast BG_b][9] &= \sum_{k \in [0, 8]}{BG_a[9] \cdot BG_b[k]} \\
+            \end{array}
+          \]
+          \[
+            \begin{array}{ll}
+              [BG_a \ast BG_b][9] \text{ is only defined if }& BG_a[9] \neq 0 \wedge BG_b[9] = 0\\
+              & BG_b[9] \neq 0 \wedge BG_a[9] = 0\\
+              & BG_a[9] = BG_b[9] = 0\\
+            \end{array}
+          \]
+          The reason for the summation of \( BG_a[9] \cdot BG_b[k] \) with \( k \in [0, 8] \) on only one side is that \( BG_a[9] \) is the "catch-all" side where a specific tile is a mine. By multiplying each \( BG_a[9] \) with \( BG_b[k] \), we would count all multiple combinations of the "catch-all".
+          <br>
+          It is undefined at \( BG_a[9] \ne 0 \wedge BG_b[9] \ne 0\) as it will not be used.
+          <br>
+          <br>
+          For shifting, where \( x_m \) is unaffected by the shift:
+          \[
+            BG_x \gg k = \left\{ \underbrace{0,0,\ldots,0}_{k}, \underbrace{x_0, x_1, \ldots, x_{8-k-1}}_{8-k}, x_m \right\}
+          \]
+          This shifting operation is similar to convolving by some \( \{ \underbrace{0, 0, \ldots, 1}_{k}, 0, \ldots, 0 \} \).
+          <br>e
+          <br>
+          This is used to count for flags/mines that are guaranteed to be mines e.g. board that requires shifting by 2
+          <br>
+          <div class="tile-template" data-ncolumns="3" data-str="c(R)c(R)c(R),fcf,c(R)c(R)c(R)"></div>
+        </div>
+        <h3>Number Probabilities (Algorithm)</h3>
+        <div>
+          The algorithm to calculate number probabilities is as follows.
+          <br>
+          There are 4 states where a clicked tile can be shown below. This affects the formulas that will be applied to each state.
+          <div style="display: grid; grid-template-columns: repeat(4, 1fr); gap: 1rem;">
+            <div class="tile-template" data-ncolumns="4" data-str="cccc,c3cc!,ccfc,cccc,"></div>
+            <div class="tile-template" data-ncolumns="4" data-str="cccc,c3!cc,ccfc,cccc,"></div>
+            <div class="tile-template" data-ncolumns="4" data-str="cccc,c3cc,ccf!c,cccc,"></div>
+            <div class="tile-template" data-ncolumns="4" data-str="cccc,c3c!c,ccfc,cccc,"></div>
+          </div>
+          <ol>
+            <li>Tile clicked is a floating tile or unknown non-adjacent tile.</li>
+            <li>Tile clicked is a number tile.</li>
+            <li>Tile clicked is a flag tile.</li>
+            <li>Tile clicked is an unknown adjacent tile to a solution.</li>
+          </ol>
+          We will use \(HG_{exc}\) for state 1 and \(HG_{all}\) for 2, 3, and 4. We create a \(BG_u\) table representing the number of combinations of "Region \( R \) has \( m \) mines".
+          <ol>
+            <li>\( HG_{exc}(U_{NA}, R_U, M_G - m, m) \)</li>
+            <li>\( HG_{all}(U_{NA}, R_U, M_G - m, m) \)</li>
+            <li>\( HG_{all}(U_{NA}, R_U, M_G - m, m) \)</li>
+            <li>\( HG_{all}(U_{NA}, R_U, M_G - m, m) \)</li>
+          </ol>
+          \( R_U \) represents the number of non-adjacent tiles that are near the clicked tile. Flags, numbers, and unknown tiles of adjacent tiles to solutions are not counted.
+          <br>
+          <br>
+          We will now create tables that count the number of mine combinations for the non-adjacent tiles. These formulas represent every solution combination of \( m \) in \( S_{M_G} \).
+          <ol>
+            <li>
+              \[
+                BG_{na} = \left\{ HG_{exc}(U_{NA}, R_U, M_G - m, k) \mid k \in [0,8], \binom{ U_{NA} - 1 }{ M_G - m - 1 } \right\} \gg R_f
+              \]
+            </li>
+            <li>
+              \[
+                BG_{na} = \left\{ HG_{all}(U_{NA}, R_U, M_G - m, k) \mid k \in [0,8], 0 \right\} \gg R_f
+              \]
+            </li>
+            <li>
+              \[
+                BG_{na} = \left\{ 0 \mid k \in [0,8], \binom{ U_{NA} }{ M_G - m } \right\} \gg R_f
+              \]
+            </li>
+            <li>
+              \[
+                BG_{na} = \left\{ HG_{all}(U_{NA}, R_U,  M_G - m, k) \mid k \in [0,8], 0 \right\} \gg R_f
+              \]
+            </li>
+          </ol>
+          For state 1, we have to count the number of combinations at index 9 where the tile is a mine. It can never be applied to states 2, 4, so index 9 is always 0. State 3 has \( \binom{ U_{NA} }{ M_G - m } \) since every combination has the mine in the clicked tile.
+          <br>
+          The significance of \( R_f \) is the number of guaranteed flags or mines in the R region, so that the elements shift by 1 for every mine/flag.
+          <br>
+          <br>
+          We will now create more tables that represent the number of combinations for each valid solution.
+          <br>
+          The table frequencies depends on how many tiles of different subsystems are within the R region. It also depends whether the clicked tile is at state 4 or not.
+          For example, consider this board with 3 subsystems where only 2 are touching.
+          <div class="tile-template" data-ncolumns="7" data-str="ccccccc,c1cc!c2c,ccccccc,ccccccc,ccccccc,c3ccccc,ccccccc,"></div>
+          Three tiles are shared for the 1 tile and three tiles are shared for the 2 tile.
+          <br>
+          <br>
+          In the 'Convolution to Calculate Mine Count and Frequencies of the Whole Board' section, we will use the \( CD(MF_{G_0},MF_{G_1},\ldots) \) in order to use
+          each distinct mine numbers for each subsystem, where m describes the sum of the mines and n describes the frequency. 
+          <br>
+          For any subsystem not touching any tiles, we will just multiply the number of solutions for a specific minecount m of a subsystem as \( MF{G_S} \):
+          \[
+            \begin{array}{l}
+            Mult_{ss} = \prod_{ S \in BS \setminus BS_t }{ MF{G_S} } \\
+            BS \in \{0, 1, 2, \ldots\} \\
+            BS_t \text{ includes subsystems touching the R region } \\
+            \end{array}
+          \]
+          The number of solutions for the 3 tile is \( \binom{8}{3} = 56 \), so \( Mult_{ss} = 56 \).
+          <br>
+          <br>
+          Then for the subsystems that do touch the region R, create a table for each separate subsystem that counts each adjacent mines, and, if the clicked tile is from state 4, also the number of times the clicked tile is a mine.
+          These are the calculations for the table above. There is no mathematical formula other than checking each solution for each subsystem that touches each region.
+          For the 1 tile:
+          \[
+            BG_{S_0} = \left\{ 5, 3, 0, 0, 0, 0, 0, 0, 0, 0  \right\} 
+          \]
+          For the 2 tile:
+          \[
+            BG_{S_1} = \left\{ 10, 15, 3, 0, 0, 0, 0, 0, 0, 0 \right\} 
+          \]
+          Next, convolute and multiply each table \( and Mult_{ss} \) to get the table result.
+          \[
+            \begin{array}{ll}
+              Mult_{ss} \cdot ( BG_{S_0} \ast BG_{S_1} ) &= 56 \cdot \left\{ 50, 105, 60, 9, 0, 0, 0, 0, 0, 0 \right\} \\
+              &= \left\{ 2800, 5880, 3360, 504, 0, 0, 0, 0, 0, 0 \right\} \\
+            \end{array}
+          \]
+          <br>
+          Then based on the total number of mines used (In this case, 1 + 2 + 3 = 6 ), we calculate \( BG_{na} \) depending on the state.
+          In this case, it is state 1. Define \( M_G = 9, m = 6, R_U = 3, and U_{NA} = 22 \)
+          \[
+            \begin{array}{ll}
+              BG_{na} &= \left\{ HG_{exc}(U_{NA}, R_U, M_G - m, k) \mid k \in [0,8], \binom{ U_{NA} - 1 }{ M_G - m - 1 } \right\} \gg R_f \\
+              &= \left\{ HG_{exc}(22, 3, 9, k) \mid k \in [0,8], \binom{ 22 - 1 }{ 9 - 6 - 1 } \right\}  \\
+              &= \left\{ (\binom{3}{k} - \binom{2}{k-1}) \cdot \binom{19}{3 - k} \mid k \in [0,8], \binom{ 21 }{ 2 } \right\}  \\
+              &= \left\{ 969, 342, 19, 0, 0, 0, 0, 0, 0, 210 \right\}
+            \end{array}
+          \]
+          <br>
+          Convolute the 2 tables together to get the result:
+          \[
+            \begin{array}{l}
+            BG_{total} = BG_{na} \ast \left\{ 2800, 5880, 3360, 504, 0, 0, 0, 0, 0, 0 \right\} \\
+            = \left\{ 2713200, 6655320, 5320000, 1749216, 236208, 9576, 0, 0, 0, 2634240 \right\} \\
+            \end{array}
+          \]
+          <br>
+          Repeat these steps for each other mine combinations of the subsystems and sum each result together as a grand total.
+          Because there's only 1 set of mines for each solution (1 tile has m=1, 2 tile has m=2, 3 tile has m=3), the table above is the final solution.
+          Let's define the grand total table as \( BG_{total} \)
+          <br>
+          To ensure that the numbers are right, recall that the total number of solutions of a board is:
+          \[
+            \displaystyle \sum_{ m \in S_{M_G} } MF_G(m) \cdot \binom{U_{NA}}{M_G - m}
+          \]
+          Since \( S_{M_G} = {6}, U_{NA} = 22, M_G = 9 \) and \(MF_G(6) = 12544 \) using the results tab,
+          The result is \( 12544 * \binom{22}{3} = 19317760 \).
+          <br>
+          Summing each element \( BG_{total} \) also gives 19317760. The calculation being equal means that the probabilities should be correct.
+          The percentages of each dividing by 19317760 gives
+          \[
+            \left\{ 14.0\%, 34.5, 27.5, 9.05, 1.22, 0.05, 0, 0, 0, 13.6 \right\}
+          \]
+          <br>
+          <br>
+          Here is another calculation example where there might be more than one \( S_{M_G} \). We would have to add each number of solutions directly into \( BG_{total} \) using \( CD(MF_{G_0},MF_{G_1},\ldots) \).
+          Here's an example board and the clicked tile we are calculating (Let \( M_G = 8 \)):
+          <div class="tile-template" data-ncolumns="8" data-str="cccccccc,c11cc22c,cccc!cccc,cccccccc,"></div>
+          State 4 will be used. Because 1-1 is used, its table calculation may also include the mine index or the 9th index because clicked tile is an adjacent unknown.
+          Subsystem 0 will refer to 1-1 and 1 to 2-2.
+          \[
+            \begin{array}{ll}
+              CD(MF_{G_0},MF_{G_1}) &=
+              \left\{
+              \begin{array}{l}
+                (1,2) : \{ m: 1 + 2, n: MF_{G_0}(1) \cdot MF_{G_1}(2) \}\\
+                (1,3) : \{ m: 1 + 3, n: MF_{G_0}(1) \cdot MF_{G_1}(3) \}\\
+                (1,4) : \{ m: 1 + 4, n: MF_{G_0}(1) \cdot MF_{G_1}(4) \}\\
+                (2,2) : \{ m: 2 + 2, n: MF_{G_0}(2) \cdot MF_{G_1}(2) \}\\
+                (2,3) : \{ m: 2 + 3, n: MF_{G_0}(2) \cdot MF_{G_1}(3) \}\\
+                (2,4) : \{ m: 2 + 4, n: MF_{G_0}(2) \cdot MF_{G_1}(4) \}\\
+              \end{array}
+              \right\}\\
+              &=
+              \left\{
+              \begin{array}{l}
+                (1,2) : \{ m: 3, n: 4 \cdot 6 \}\\
+                (1,3) : \{ m: 4, n: 4 \cdot 36 \}\\
+                (1,4) : \{ m: 5, n: 4 \cdot 9 \}\\
+                (2,2) : \{ m: 4, n: 9 \cdot 6 \}\\
+                (2,3) : \{ m: 5, n: 9 \cdot 36 \}\\
+                (2,4) : \{ m: 6, n: 9 \cdot 9 \}\\
+              \end{array}
+              \right\}\\
+              &=
+              \left\{
+              \begin{array}{l}
+                (1,2) : \{ m: 3, n: 24 \}\\
+                (1,3) : \{ m: 4, n: 144 \}\\
+                (1,4) : \{ m: 5, n: 36 \}\\
+                (2,2) : \{ m: 4, n: 54 \}\\
+                (2,3) : \{ m: 5, n: 324 \}\\
+                (2,4) : \{ m: 6, n: 81 \}\\
+              \end{array}
+              \right\}\\
+            \end{array}
+          \]
+          We use the information to iterate and sum these mine pairs. \( Mult_{ss} = 1 \) since all subsystems are used.
+          For (1, 2), 1-1 table would be \( \left\{ 3, 1, 0, 0, 0, 0, 0, 0, 0 \right\} \),
+          and 2-2 table would be \( \left\{ 6, 0, 0, 0, 0, 0, 0, 0, 0, 0 \right\} \)
+          We'll use state 4 for \( BG_{na} \) where \( U_{NA} = 8, R_U = 3, M_G = 9, R_f = 0, m = 3 \) (No flags used)
+          \[
+            \begin{array}{ll}
+              BG_{na} &= \left\{ HG_{all}(U_{NA}, R_U, M_G - m, k) \mid k \in [0,8], 0 \right\} \gg R_f \\
+              &= \left\{ HG_{all}(8,3,6,k) \mid k \in [0,8], 0 \right\} \gg 0 \\
+              &= \left\{ \binom{3}{k} \cdot \binom{5}{6-k} \mid k \in [0,8], 0 \right\} \\
+              &= \left\{ 0, 3, 15, 10, 0, 0, 0, 0, 0, 0 \right\} \\
+            \end{array}
+          \]
+          Now we use convolution to multiply all the results together. This results in
+          \[
+            \left\{ 0, 54, 288, 270, 60, 0, 0, 0, 0, 0 \right\}
+          \]
+          <br>
+          <br>
+          For (1, 3), 1-1 table would be \( \left\{ 3, 1, 0, 0, 0, 0, 0, 0, 0 \right\} \),
+          2-2 table would be \( \left\{ 12, 24, 0, 0, 0, 0, 0, 0, 0, 0 \right\} \)
+          \( BG_{na} \) is the following, there the variable that changed is \( m = 4 \):
+          \[
+            \begin{array}{ll}
+              BG_{na} &= \left\{ \binom{3}{k} \cdot \binom{5}{5-k} \mid k \in [0,8], 0 \right\} \\
+              &= \left\{ 1, 15, 30, 10, 0, 0, 0, 0, 0, 0 \right\} \\
+            \end{array}
+          \]
+          The convolute the results together to get:
+          \[
+            \left\{ 36, 624, 2364, 3240, 1560, 240, 0, 0, 0, 0 \right\}
+          \]
+          For (1, 4), where \( m = 5 \), result of \( \text{(1-1 table) } \ast \text{ (2-2 table) } \ast BG_{na} \) is:
+          \[
+            \begin{array}{l}
+              = \left\{ 3, 1, 0, 0, 0, 0, 0, 0, 0 \right\} \ast \left\{ 0, 6, 3, 0, 0, 0, 0, 0, 0 \right\} \ast \left\{ 5, 30, 30, 5, 0, 0, 0, 0, 0 \right\} \\
+              = \left\{ 0, 90, 615, 1005, 630, 165, 15, 0, 0, 0\right\}
+            \end{array}
+          \]
+          For (2, 2), where \( m = 4 \)
+          \[
+            \begin{array}{l}
+              = \left\{ 3, 3, 0, 0, 0, 0, 0, 0, 3 \right\} \ast \left\{ 6, 0, 0, 0, 0, 0, 0, 0, 0 \right\} \ast \left\{ 1, 15, 30, 10, 0, 0, 0, 0, 0 \right\} \\
+              = \left\{ 18, 288, 810, 720, 180, 0, 0, 0, 0, 1008\right\}
+            \end{array}
+          \]
+          Note the 3 in the 9th index of the 1-1 table, as 3 solutions have the clicked tile to be a mine.
+          <br>
+          <br>
+          For (2, 3), where \( m = 5 \)
+          \[
+            \begin{array}{l}
+              = \left\{ 3, 3, 0, 0, 0, 0, 0, 0, 3 \right\} \ast \left\{ 12, 24, 0, 0, 0, 0, 0, 0, 0 \right\} \ast \left\{ 5, 30, 30, 5, 0, 0, 0, 0, 0 \right\} \\
+              = \left\{ 180, 1620, 4680, 5580, 2700, 360, 0, 0, 0, 7560 \right\}
+            \end{array}
+          \]
+          For (2, 4), where \( m = 6 \)
+          \[
+            \begin{array}{l}
+              = \left\{ 3, 3, 0, 0, 0, 0, 0, 0, 3 \right\} \ast \left\{ 0, 6, 3, 0, 0, 0, 0, 0, 0 \right\} \ast \left\{ 10, 30, 15, 1, 0, 0, 0, 0, 0 \right\} \\
+              = \left\{ 0, 180, 810, 1170, 693, 162, 9, 0, 0, 1512\right\}
+            \end{array}
+          \]
+          Now we add all the results together to get the \( BG_{total} \), and the sum of each elements, which results in,
+          \[
+            \left\{ 234, 2856, 9567, 11985, 5823, 927, 24, 0, 0, 10080\right\} \text{, sum = } 41496
+          \]
+          And then verify 41496 is the number of solutions using the formula and Results Tab (Or the CD results) \( S_{M_G} = {3,4,5,6} \) and \( MF_G(S_{M_G}) = {24, 198, 360, 81}\)
+          \[
+            \begin{array}{ll}
+              \displaystyle \sum_{ m \in S_{M_G} } MF_G(m) \cdot \binom{U_{NA}}{M_G - m}
+              &= \displaystyle \sum_{ m \in S_{M_G} } MF_G(m) \cdot \binom{8}{9 - m}\\
+              &= \displaystyle \sum_{ m \in S_{M_G} } MF_G(m) \cdot \binom{8}{9 - m}\\
+              &= 24 \cdot \binom{8}{9-3} + 198 \cdot \binom{8}{9-4} + 360 \cdot \binom{8}{9-5} + 81 \cdot \binom{8}{9-6} \\
+              &= 41496
+            \end{array}
+          \]
+          The percentages of this tile is the following:
+          \[
+            \left\{ 0.56\%, 6.88, 23.1, 28.9, 14.0, 2.23, 0.06, 0, 0, 24.3\right\}
+          \]
         </div>
       </div>
     </div>
