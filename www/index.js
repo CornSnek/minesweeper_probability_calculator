@@ -3,7 +3,6 @@ import {
     CalculateStatus, Calculate, ProbabilityList,
     LocationCount, IDToLocationExtern, TileLocation,
     MineFrequency, SolutionBitsExtern, StringSlice,
-    PlayProbabilityStatus
 } from './wasm_to_js.js'
 let WasmObj = null;
 let WasmExports = null;
@@ -43,6 +42,7 @@ let show_solution_seed;
 let show_solution_subsystem;
 let show_solution_output;
 let calculate_on_change;
+let show_pbg;
 let rows = null;
 let columns = null;
 let keybind_map = new Map();
@@ -211,6 +211,7 @@ async function init() {
     prob_window = document.getElementById('prob-window');
     prob_window_close = document.getElementById('prob-window-close');
     calculate_on_change = document.getElementById('calculate-on-change');
+    show_pbg = document.getElementById('show-pbg');
     const root_comp = getComputedStyle(document.documentElement);
     tile_colors.neutral = root_comp.getPropertyValue('--ms-probability');
     tile_colors.mine = root_comp.getPropertyValue('--ms-probability-mine');
@@ -298,11 +299,10 @@ async function init() {
                                 hide_config_window_f(e);
                             break;
                         case 'G':
-                            if (prob_window.classList.contains('window-hide')) {
-                                prob_window.classList.remove('window-hide');
-                            } else {
-                                hide_prob_f(e);
-                            }
+                            show_pbg_f(e);
+                            break;
+                        case 'S':
+                            parse_screenshot_popup_f(e);
                             break;
                         case 'P':
                             show_play_current_board_f(e);
@@ -433,15 +433,7 @@ async function init() {
         }
     };
     calculate_probability.onclick = calculate_probability_f;
-    parse_screenshot_popup.onclick = async e => {
-        if (web_state == STATE_IDLE) {
-            deselect_tiles_f();
-            hide_any_right_panels(e);
-            disable_upload_sliders(true);
-            upload_output.textContent = '';
-            show_upload_body();
-        }
-    }
+    parse_screenshot_popup.onclick = parse_screenshot_popup_f;
     play_upload_current_board.onclick = e => {
         const success = WasmExports.UploadCurrentBoard();
         if (success == 0) {
@@ -514,6 +506,7 @@ async function init() {
             flash_message(FLASH_SUCCESS, 'Calculate On Change automatically calls Calculate Probability when updating tiles, mine count, or include flags.', 5000);
         }
     };
+    show_pbg.onclick = show_pbg_f;
     play_new_game.disabled = play_gamemode.value == 'Probability';
     play_new_game_with_seed.disabled = play_gamemode.value == 'Probability';
     prob_exclude_mine.onchange = e => {
@@ -602,6 +595,15 @@ function show_config_window_f(e) {
 function hide_config_window_f(e) {
     show_config_window.classList.remove('tab-selected');
     config.classList.add('window-hide');
+}
+function show_pbg_f(e) {
+    if (prob_window.classList.contains('window-hide')) {
+        prob_window.classList.remove('window-hide');
+        show_pbg.classList.add('tab-selected');
+    } else {
+        hide_prob_f(e);
+        show_pbg.classList.remove('tab-selected');
+    }
 }
 function drag_window_f(config_window, client_x, client_y) {
     let x = client_x - parseInt(config_window.dataset.dragx);
@@ -1074,9 +1076,13 @@ function tile_select_any_f(e) {
 }
 function update_bar_graph_f() {
     if (selected_tile.type == SelectedTile.One && !prob_window.classList.contains('window-hide')) {
-        calculate_worker.postMessage(['f', 'CalculateTileStats',
-            selected_tile.select.x, selected_tile.select.y, parseInt(gm_count.value), include_flags.checked
-        ]);
+        if (WasmExports.BoardOkay()) {
+            calculate_worker.postMessage(['f', 'CalculateTileStats',
+                selected_tile.select.x, selected_tile.select.y, parseInt(gm_count.value), include_flags.checked
+            ]);
+        } else {
+            prob_chart.textContent = prob_chart_default_text;
+        }
     }
 }
 ///ord_fn is 0 if lhs is equal to rhs, negative if less than, or positive if greater than
@@ -1186,6 +1192,10 @@ function update_tile_div(div, use_is_clicked, half_transparent) {
 }
 let uoc_handler = null;
 function set_tile(x, y, ms_type) {
+    if (Atomics.load(new Uint8Array(WasmMemory.buffer), WasmExports.IsCalculating.value) == 1) {
+        flash_message(FLASH_ERROR, 'Cannot edit board while Calculate Probability is active.', 5000);
+        return;
+    }
     WasmExports.SetTile(x, y, ms_type);
     update_tile(x, y);
     if (uoc_handler == null) //Debounce when this is called more than once.
@@ -1859,6 +1869,15 @@ function disable_upload_sliders(b) {
     crop_up.disabled = b;
     crop_down.disabled = b;
     board_width_size.disabled = b;
+}
+async function parse_screenshot_popup_f(e) {
+    if (web_state == STATE_IDLE) {
+        deselect_tiles_f();
+        hide_any_right_panels(e);
+        disable_upload_sliders(true);
+        upload_output.textContent = '';
+        show_upload_body();
+    }
 }
 async function show_upload_body(file) {
     web_state = STATE_UPLOAD;

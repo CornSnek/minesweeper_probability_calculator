@@ -204,7 +204,8 @@ pub fn build(b: *std.Build) !void {
         "GetMineBoard",      "GetLeftClickBoard",    "GetRightClickBoard",
         "GetMineSeed",       "UploadCurrentBoard",   "HasUploaded",
         "CheckCurrentBoard", "ProbabilityClickTile", "CancelProbability",
-        "PPStatus",          "CalculateTileStats",
+        "PPStatus",          "CalculateTileStats",   "BoardOkay",
+        "IsCalculating",
     };
     const install_wasm = b.addInstallArtifact(wasm_lib, .{
         .dest_sub_path = try std.fmt.allocPrint(b.allocator, "{s}/{s}.wasm", .{ www_root, program_name }),

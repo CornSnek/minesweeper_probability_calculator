@@ -7,6 +7,8 @@ The web application is deployed at https://cornsnek.github.io/minesweeper_probab
 ## About
 I started to play Minesweeper, and I was interested in how Minesweeper Patterns are calculated as a safe number or a mine tile.
 This app was created in order to calculate the mine probabilities and understand the mathematics in calculating them.
+This app also can calculate specific number tiles using the Probability Bar Graph option when selecting a tile, giving more information than just the probability that the tile is a mine.
+This app also includes playing minesweeper. Empty and Custom boards can be uploaded using the Play Current Board option.
 
 ## Zig Build
 This project currently uses Zig 0.14.0 to build the project.
@@ -41,9 +43,6 @@ flag_2.png, flag
 
 The python scripts are then used to create the neural network models to detect tiles and to export the model as an `.onnx` file.
 The file is then placed into the `www` folder to be used by ONNX Runtime.
-
-## TODO
-- Play a minesweeper board functionality.
 
 ## Projects Used
 - **KaTeX** (https://katex.org) was added to this project to show and format the matrices and probability calculations
