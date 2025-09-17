@@ -625,7 +625,7 @@ fn calculate_tile_stats(x: usize, y: usize, global_mine_count: isize, include_mi
             var ss_arr_len: usize = 0;
             for (adj_tst[0..tmd.len]) |tst| {
                 if (tst == .adj) {
-                    for (ss_arr) |ss| {
+                    for (ss_arr[0..ss_arr_len]) |ss| {
                         if (tst.adj.ss == ss) break;
                     } else {
                         ss_arr[ss_arr_len] = tst.adj.ss;
