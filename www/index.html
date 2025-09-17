@@ -886,12 +886,12 @@
             <li>Tile clicked is a flag tile.</li>
             <li>Tile clicked is an unknown adjacent tile to a solution.</li>
           </ol>
-          We will use \(HG_{exc}\) for state 1 and \(HG_{all}\) for 2, 3, and 4. We create a \(BG_u\) table representing the number of combinations of "Region \( R \) has \( m \) mines".
+          We will use \(HG_{exc}\) for state 1 and \(HG_{all}\) for 2, 3, and 4. We create a \(BG_u\) table representing the number of combinations of "Region \( R \) has \( k \) mines".
           <ol>
-            <li>\( HG_{exc}(U_{NA}, R_U, M_G - m, m) \)</li>
-            <li>\( HG_{all}(U_{NA}, R_U, M_G - m, m) \)</li>
-            <li>\( HG_{all}(U_{NA}, R_U, M_G - m, m) \)</li>
-            <li>\( HG_{all}(U_{NA}, R_U, M_G - m, m) \)</li>
+            <li>\( HG_{exc}(U_{NA}, R_U, M_G - m, k) \)</li>
+            <li>\( HG_{all}(U_{NA}, R_U, M_G - m, k) \)</li>
+            <li>\( HG_{all}(U_{NA}, R_U, M_G - m, k) \)</li>
+            <li>\( HG_{all}(U_{NA}, R_U, M_G - m, k) \)</li>
           </ol>
           \( R_U \) represents the number of non-adjacent tiles that are near the clicked tile. Flags, numbers, and unknown tiles of adjacent tiles to solutions are not counted.
           <br>
