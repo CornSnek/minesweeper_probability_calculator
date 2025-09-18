@@ -4,7 +4,8 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Minesweeper Calculator</title>
+  <title>Minesweeper Probability Calculator</title>
+  <meta name="description" content="Manually input Minesweeper boards with in order to calculate probabilities such as mine probability or tile probability, and visually show mine configurations.">
   <link rel="icon" href="images/favicon.png" type="image/png">
   <link rel="stylesheet" type="text/css" href="index.css">
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.22/dist/katex.min.css"
@@ -206,10 +207,16 @@
         <br><br>
         Once the probability is calculated, you can click on adjacent tiles to see the calculations of the total number of solutions, and the frequency of solutions s that have m number of mines. This shows the frequencies per tile and per board/system.
         <br><br>
-        You can also check the possible mine configurations or valid solutions by checking the Solutions checkbox. This will try to show every single mine configuration possible for a particular subsystem or subboard. Configurations are ordered from least to greatest amount of mines. To see the range for each exact number of mines for a Configuration, see the 'Results' tab.
+        You can also check the possible mine configurations or valid solutions by checking the Solutions checkbox. This will try to show every single mine configuration possible for a particular subsystem. Configurations are ordered from least to greatest amount of mines. To see the range for each exact number of mines for a Configuration, see the 'Results' tab.
         <br><br>
         This website can also parse screenshots of minesweeper boards. To try this feature, drag a minesweeper screenshot, input the width of the board and crop only the board available, and press 'Parse Screenshot'.
-        <br>Note: If you properly cropped the picture, it may still be inaccurate in its predictions, so you will have to check your screenshot for any incorrect tiles. 
+        <br>Note: If you properly cropped the picture, it may still be inaccurate in its predictions, so you will have to check your screenshot for any incorrect tiles.
+        <br><br>
+        You can check certain probabilities of tiles as well by using Probability Bar Graph. It will show, in detail, the probabilities of number tiles from 0 to 8.
+        <br><br>
+        You can also play a minesweeper board by clicking Play Minesweeper and pressing the Upload Board button. Note: You must press Calculate Probability in the main program first.
+        <br>
+        You then click New Game from Upload. The mines are randomized every time except for mines or flags that you specify from the main program.
       </div>
     </div>
     <div id="probability-tab" class="options-gui panel-hide-right">
