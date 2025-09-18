@@ -88,11 +88,11 @@
       </div>
     </div>
   </div>
-  <div id="board-seed-window" class="window no-highlight window-hide" style="width: 800px; height:200px; left: calc(100% - 800px); top: calc(100% - 200px);" data-left="0" data-top="0" data-dragx="0" data-dragy="0">
+  <div id="board-seed-window" class="window no-highlight window-hide" style="width: 800px; height:220px; left: calc(100% - 800px); top: calc(100% - 220px);" data-left="0" data-top="0" data-dragx="0" data-dragy="0">
     <div class="window-header"><div>Board Seed</div><div><strong id="board-seed-close" class="badge window-close">Close</strong></div></div>
     <div>
         <textarea id="play-board-data" cols="95" rows="5" resizable="false"></textarea>
-        <div>Format: (Width)x(Height) that ends with a comma. The parameters include an equal sign after the parameter, and every 8 tiles are encoded as 2 hexadecimal digits. <b>m</b> represents the mines, <b>l</b> represents the tiles that will be revealed, and <b>r</b> represents the tiles that will be flagged.</div>
+        <div>Format: (Width)x(Height) that ends with a comma. The parameters include an equal sign after the parameter, and every 8 tiles are encoded as 2 hexadecimal digits. <b>m</b> represents the mines, <b>l</b> represents the tiles that will be revealed, and <b>r</b> represents the tiles that will be flagged. Note: New Game will only generate the Board Seed when clicking a tile for the first time.</div>
     </div>
   </div>
   <div id="prob-window" class="window no-highlight window-hide" style="width: 500px; height: 230px; left: calc(100% - 500px); top: calc(100% - 230px);" data-left="0" data-top="0" data-dragx="0" data-dragy="0">
@@ -168,7 +168,7 @@
       Parse Screenshot <strong class="badge">Shift</strong>+<strong class="badge">S</strong>
     </div>
     <div id="play-current-board" class="tabs-button">
-      Play Current Board <strong class="badge">Shift</strong>+<strong class="badge">P</strong>
+      Play Minesweeper <strong class="badge">Shift</strong>+<strong class="badge">P</strong>
     </div>
     <div id="clear-all-button" class="tabs-button">
       Clear All Tiles <strong class="badge">Shift</strong>+<strong class="badge">Delete</strong>
@@ -881,10 +881,10 @@
             <div class="tile-template" data-ncolumns="4" data-str="cccc,c3c!c,ccfc,cccc,"></div>
           </div>
           <ol>
-            <li>Tile clicked is a floating tile or unknown non-adjacent tile.</li>
+            <li>Tile clicked is an unknown non-adjacent tile.</li>
             <li>Tile clicked is a number tile.</li>
             <li>Tile clicked is a flag tile.</li>
-            <li>Tile clicked is an unknown adjacent tile to a solution.</li>
+            <li>Tile clicked is an unknown adjacent tile.</li>
           </ol>
           We will use \(HG_{exc}\) for state 1 and \(HG_{all}\) for 2, 3, and 4. We create a \(BG_u\) table representing the number of combinations of "Region \( R \) has \( k \) mines".
           <ol>

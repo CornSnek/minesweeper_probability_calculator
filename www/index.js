@@ -2676,7 +2676,7 @@ class Play {
         const seed_te = TE.encode(seed_str);
         const len = seed_te.byteLength;
         if (len == 0) {
-            flash_message(FLASH_ERROR, 'Board Seed is empty.');
+            flash_message(FLASH_ERROR, 'Board Seed input is empty.');
             return;
         }
         const alloc_ptr = WasmExports.WasmAlloc(len);
