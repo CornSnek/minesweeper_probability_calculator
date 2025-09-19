@@ -11,7 +11,7 @@ This app also can calculate specific number tiles using the Probability Bar Grap
 This app also includes playing minesweeper. Empty and Custom boards can be uploaded using the Play Current Board option.
 
 ## Zig Build
-This project currently uses Zig 0.14.0 to build the project.
+This project currently uses Zig 0.15.1 to build the project.
 
 In order to build the website and/or the wasm binary: `zig build wasm -Doptimize=...`
 
