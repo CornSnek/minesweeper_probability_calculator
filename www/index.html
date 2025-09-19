@@ -940,17 +940,19 @@
           <br>
           <br>
           In the 'Convolution to Calculate Mine Count and Frequencies of the Whole Board' section, we will use the \( CD(MF_{G_0},MF_{G_1},\ldots) \) in order to use
-          each distinct mine numbers for each subsystem, where m describes the sum of the mines and n describes the frequency. 
+          each distinct mine number tuples for each subsystem, where m describes the sum of the mines and n describes the frequency. In our case, the only mine tuple is \( (1,2,3) \).
           <br>
-          For any subsystem not touching any tiles, we will just multiply the number of solutions for a specific minecount m of a subsystem as \( MF{G_S} \):
+          For any subsystem not touching any tiles, we will just multiply the number of solutions for a specific mine tuple using indexing and its MF function.
+          We index the tuple for some S as \( (m_0, m_1, ...)[S] \) (0-indexed) to extract a tuple number. The formula would be as follows.
           \[
             \begin{array}{l}
-            Mult_{ss} = \prod_{ S \in BS \setminus BS_t }{ MF{G_S} } \\
+            Mult_{ss} = \prod_{ S \in BS \setminus BS_t }{ MF_{G_S}((m_0, m_1, \ldots)[S]) } \\
             BS \in \{0, 1, 2, \ldots\} \\
             BS_t \text{ includes subsystems touching the R region } \\
             \end{array}
           \]
-          The number of solutions for the 3 tile is \( \binom{8}{3} = 56 \), so \( Mult_{ss} = 56 \).
+          Let's say that \( MF_{G_2} \) represents the 3 tile. The mine tuple and \( S = 2 \) shows \( (1,2,3)[2] \), or 3 will be the number of mines that we need to count for the 3 tile.
+          The number of solutions for the 3 tile is \( MF_{G_2}(3) = 56 \), so \( Mult_{ss} = 56 \).
           <br>
           <br>
           Then for the subsystems that do touch the region R, create a table for each separate subsystem that counts each adjacent mines, and, if the clicked tile is from state 4, also the number of times the clicked tile is a mine.
@@ -963,7 +965,7 @@
           \[
             BG_{S_1} = \left\{ 10, 15, 3, 0, 0, 0, 0, 0, 0, 0 \right\} 
           \]
-          Next, convolute and multiply each table \( and Mult_{ss} \) to get the table result.
+          Next, convolute and multiply each table and \( Mult_{ss} \) to get the table result.
           \[
             \begin{array}{ll}
               Mult_{ss} \cdot ( BG_{S_0} \ast BG_{S_1} ) &= 56 \cdot \left\{ 50, 105, 60, 9, 0, 0, 0, 0, 0, 0 \right\} \\
@@ -972,12 +974,12 @@
           \]
           <br>
           Then based on the total number of mines used (In this case, 1 + 2 + 3 = 6 ), we calculate \( BG_{na} \) depending on the state.
-          In this case, it is state 1. Define \( M_G = 9, m = 6, R_U = 3, and U_{NA} = 22 \)
+          In this case, it is state 1. Define \( M_G = 9, m = 6, R_U = 3, R_f = 0, U_{NA} = 22 \)
           \[
             \begin{array}{ll}
               BG_{na} &= \left\{ HG_{exc}(U_{NA}, R_U, M_G - m, k) \mid k \in [0,8], \binom{ U_{NA} - 1 }{ M_G - m - 1 } \right\} \gg R_f \\
-              &= \left\{ HG_{exc}(22, 3, 9, k) \mid k \in [0,8], \binom{ 22 - 1 }{ 9 - 6 - 1 } \right\}  \\
-              &= \left\{ (\binom{3}{k} - \binom{2}{k-1}) \cdot \binom{19}{3 - k} \mid k \in [0,8], \binom{ 21 }{ 2 } \right\}  \\
+              &= \left\{ HG_{exc}(22, 3, 9, k) \mid k \in [0,8], \binom{ 22 - 1 }{ 9 - 6 - 1 } \right\} \gg 0 \\
+              &= \left\{ (\binom{3}{k} - \binom{2}{k-1}) \cdot \binom{19}{3 - k} \mid k \in [0,8], \binom{ 21 }{ 2 } \right\} \\
               &= \left\{ 969, 342, 19, 0, 0, 0, 0, 0, 0, 210 \right\}
             \end{array}
           \]
@@ -1053,7 +1055,7 @@
           We use the information to iterate and sum these mine pairs. \( Mult_{ss} = 1 \) since all subsystems are used.
           For (1, 2), 1-1 table would be \( \left\{ 3, 1, 0, 0, 0, 0, 0, 0, 0, 0 \right\} \),
           and 2-2 table would be \( \left\{ 6, 0, 0, 0, 0, 0, 0, 0, 0, 0 \right\} \)
-          We'll use state 4 for \( BG_{na} \) where \( U_{NA} = 8, R_U = 3, M_G = 9, R_f = 0, m = 3 \) (No flags used)
+          We'll use state 4 for \( BG_{na} \) where \( U_{NA} = 8, R_U = 3, M_G = 9, R_f = 0, m = 3 \)
           \[
             \begin{array}{ll}
               BG_{na} &= \left\{ HG_{all}(U_{NA}, R_U, M_G - m, k) \mid k \in [0,8], 0 \right\} \gg R_f \\
