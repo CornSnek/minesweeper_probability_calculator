@@ -549,7 +549,11 @@ fn calculate_tile_stats(x: usize, y: usize, global_mine_count: isize, include_mi
     const tmd: TilesMetadata = .init(x, y, width, height);
     const bd = get_board_data(&cm, global_mine_count, include_mine_flags) orelse return error.InvalidBoardData;
     var mfcs = try rng.mfcs_create(&cm, bd, bd.adj_mine_count, false);
-    defer mfcs.deinit(wasm_allocator);
+    defer {
+        for (mfcs.items) |*m|
+            m.deinit(wasm_allocator);
+        mfcs.deinit(wasm_allocator);
+    }
     for (cm.mm_subsystems, 0..) |*mms, ss| {
         for (mms.tm.idtol.items) |tl| {
             try loc_hm.put(wasm_allocator, tl, .{ .id = mms.tm.ltoid.get(tl).?, .ss = ss });

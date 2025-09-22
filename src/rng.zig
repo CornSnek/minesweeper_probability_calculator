@@ -524,7 +524,7 @@ pub fn mfcs_create(cm_p: *CalculatedMap, bd: BoardData, mines_left: isize, as_ru
             @truncate(@as(usize, @bitCast(bd.non_adjacent_tiles))),
             g_min_m,
         ); //Multiply convoluted f with comb(unknown_non-adjacent_tiles, mine_count - mfc.m)
-        errdefer bui_comb.deinit(wasm_allocator);
+        defer bui_comb.deinit(wasm_allocator);
         try mfc.f.multiply(wasm_allocator, &bui_comb);
         try mfcs.append(wasm_allocator, mfc);
     }
@@ -559,7 +559,11 @@ fn create_preset_board(bd: BoardData) !void {
     var i_array: std.ArrayList(usize) = .empty;
     defer i_array.deinit(wasm_allocator);
     var mfcs = try mfcs_create(&cm, bd, mines_left, true);
-    defer mfcs.deinit(wasm_allocator);
+    defer {
+        for (mfcs.items) |*m|
+            m.deinit(wasm_allocator);
+        mfcs.deinit(wasm_allocator);
+    }
     var mfc_f_random: big_number.BigUInt = try .init_random(wasm_allocator, prng.random(), &mfcs.items[mfcs.items.len - 1].f);
     defer mfc_f_random.deinit(wasm_allocator);
     var chosen_mfc: usize = 0;
@@ -573,7 +577,6 @@ fn create_preset_board(bd: BoardData) !void {
         //std.log.err("{} {} {any} {}\n", .{ ss_i, mf_i, sbr, random_i });
         try i_array.append(wasm_allocator, random_i);
     }
-    @import("wasm_print.zig").FlushPrint(false);
     for (0..cm.mm_subsystems.len) |i| {
         const idtol = &cm.mm_subsystems[i].tm.idtol;
         for (0..idtol.items.len) |j| {
@@ -686,7 +689,7 @@ pub export fn ProbabilityClickTile(global_mine_count: isize, include_mine_flags:
         PPStatus = .running;
         while (@atomicLoad(PlayProbabilityStatus, &PPStatus, .acquire) == .running) {
             clear_board();
-            create_preset_board(bd) catch unreachable;
+            create_preset_board(bd) catch allocation_error();
             if (mine_board.items[this_bb.byte] & this_bb.bit != 0) {
                 f_table[9] += 1;
             } else {
