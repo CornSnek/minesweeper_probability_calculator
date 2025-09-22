@@ -589,7 +589,7 @@ fn calculate_tile_stats(x: usize, y: usize, global_mine_count: isize, include_mi
         }
     }
     var num_unknowns: usize = 0;
-    for (adj_tst) |tst| {
+    for (adj_tst[0..tmd.len]) |tst| {
         if (tst == .na_unknown) num_unknowns += 1;
     }
     var total_adj_mm: AdjMinecountMap = try .init(wasm_allocator);
