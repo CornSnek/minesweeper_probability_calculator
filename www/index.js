@@ -1043,46 +1043,54 @@ function tile_select_any_f(e) {
     tile_gui.classList.remove('panel-hide-down');
     tile_gui.classList.add('panel-show');
     tile_description.innerHTML = get_default_tile_description();
-    const down_f = e => {
-        if (calculate_on_change.checked) return;
-        e.preventDefault();
-        selected_tile.center_view();
-        deselect_tiles_f(e);
-        this.shift(SelectedTile.Down);
-        tile_select_any_f.bind(this)(e);
+    const down_f = coc_prev => {
+        return e => {
+            e.preventDefault();
+            if (coc_prev && document.activeElement === gm_count) return;
+            selected_tile.center_view();
+            deselect_tiles_f(e);
+            this.shift(SelectedTile.Down);
+            tile_select_any_f.bind(this)(e);
+        }
     };
-    const up_f = e => {
-        if (calculate_on_change.checked) return;
-        e.preventDefault();
-        selected_tile.center_view();
-        deselect_tiles_f(e);
-        this.shift(SelectedTile.Up);
-        tile_select_any_f.bind(this)(e);
+    const up_f = coc_prev => {
+        return e => {
+            e.preventDefault();
+            if (coc_prev && document.activeElement === gm_count) return;
+            selected_tile.center_view();
+            deselect_tiles_f(e);
+            this.shift(SelectedTile.Up);
+            tile_select_any_f.bind(this)(e);
+        }
     };
-    const left_f = e => {
-        if (calculate_on_change.checked) return;
-        e.preventDefault();
-        selected_tile.center_view();
-        deselect_tiles_f(e);
-        this.shift(SelectedTile.Left);
-        tile_select_any_f.bind(this)(e);
+    const left_f = coc_prev => {
+        return e => {
+            e.preventDefault();
+            if (coc_prev && document.activeElement === gm_count) return;
+            selected_tile.center_view();
+            deselect_tiles_f(e);
+            this.shift(SelectedTile.Left);
+            tile_select_any_f.bind(this)(e);
+        }
     };
-    const right_f = e => {
-        if (calculate_on_change.checked) return;
-        e.preventDefault();
-        selected_tile.center_view();
-        deselect_tiles_f(e);
-        this.shift(SelectedTile.Right);
-        tile_select_any_f.bind(this)(e);
+    const right_f = coc_prev => {
+        return e => {
+            e.preventDefault();
+            if (coc_prev && document.activeElement === gm_count) return;
+            selected_tile.center_view();
+            deselect_tiles_f(e);
+            this.shift(SelectedTile.Right);
+            tile_select_any_f.bind(this)(e);
+        }
     };
-    keybind_map.set('ArrowDown', down_f);
-    keybind_map.set('s', down_f);
-    keybind_map.set('ArrowUp', up_f);
-    keybind_map.set('w', up_f);
-    keybind_map.set('ArrowLeft', left_f);
-    keybind_map.set('a', left_f);
-    keybind_map.set('ArrowRight', right_f);
-    keybind_map.set('d', right_f);
+    keybind_map.set('ArrowDown', down_f(true)); //When using gm_count, disable up/down keys.
+    keybind_map.set('s', down_f(false));
+    keybind_map.set('ArrowUp', up_f(true));
+    keybind_map.set('w', up_f(false));
+    keybind_map.set('ArrowLeft', left_f(false));
+    keybind_map.set('a', left_f(false));
+    keybind_map.set('ArrowRight', right_f(false));
+    keybind_map.set('d', right_f(false));
     for (const [ch, tile] of ch_to_tile_enum) {
         console.assert(keybind_map.get(ch) === undefined, `Warning: Overwriting keybind_map function '${ch}'`);
         keybind_map.set(ch, assign_selected_f.bind({ tile, selected_tile, set_undo_buffer: true }));
