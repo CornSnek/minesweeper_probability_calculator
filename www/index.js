@@ -416,10 +416,15 @@ async function init() {
     tile_size_f();
     columns_num.onclick = deselect_tiles_f;
     rows_num.onclick = deselect_tiles_f;
-    gm_count.onclick = deselect_tiles_f;
+    gm_count.onclick = e => {
+        if (!calculate_on_change.checked) deselect_tiles_f(e);
+    }
     gm_count.onchange = e => {
-        deselect_tiles_f(e);
-        if (calculate_on_change.checked) calculate_probability_f(e);
+        e.preventDefault();
+        if (!calculate_on_change.checked)
+            deselect_tiles_f(e);
+        else
+            calculate_probability_f(e);
     };
     generate_grid.onclick = e => {
         if (web_state != STATE_IDLE && web_state != STATE_PLAY) return;
@@ -1033,6 +1038,7 @@ function tile_select_any_f(e) {
     tile_gui.classList.add('panel-show');
     tile_description.innerHTML = get_default_tile_description();
     const down_f = e => {
+        if (calculate_on_change.checked) return;
         e.preventDefault();
         selected_tile.center_view();
         deselect_tiles_f(e);
@@ -1040,6 +1046,7 @@ function tile_select_any_f(e) {
         tile_select_any_f.bind(this)(e);
     };
     const up_f = e => {
+        if (calculate_on_change.checked) return;
         e.preventDefault();
         selected_tile.center_view();
         deselect_tiles_f(e);
@@ -1047,6 +1054,7 @@ function tile_select_any_f(e) {
         tile_select_any_f.bind(this)(e);
     };
     const left_f = e => {
+        if (calculate_on_change.checked) return;
         e.preventDefault();
         selected_tile.center_view();
         deselect_tiles_f(e);
@@ -1054,6 +1062,7 @@ function tile_select_any_f(e) {
         tile_select_any_f.bind(this)(e);
     };
     const right_f = e => {
+        if (calculate_on_change.checked) return;
         e.preventDefault();
         selected_tile.center_view();
         deselect_tiles_f(e);
