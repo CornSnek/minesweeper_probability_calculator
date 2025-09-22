@@ -421,10 +421,16 @@ async function init() {
     }
     gm_count.onchange = e => {
         e.preventDefault();
-        if (!calculate_on_change.checked)
+        if (!calculate_on_change.checked) {
             deselect_tiles_f(e);
-        else
-            calculate_probability_f(e);
+        } else {
+            if (web_state != STATE_CALCULATING) { //Don't cancel and change to old value.
+                calculate_probability_f(e);
+            } else {
+                gm_count.value = parseInt(gm_count.dataset.old_v);
+            }
+        }
+        gm_count.dataset.old_v = gm_count.value;
     };
     generate_grid.onclick = e => {
         if (web_state != STATE_IDLE && web_state != STATE_PLAY) return;
