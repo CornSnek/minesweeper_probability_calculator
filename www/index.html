@@ -757,18 +757,18 @@
           , we will only use the numerator part of the formula. Consider the following board below:
           <br>
           <br>
-          <div class="tile-template" data-ncolumns="6" data-str="c(R)c(R)c(R)c(N)c(N)c(N),c(R)xc(R)c(N)c(N)c(N),c(R)c(R)c(R)c(N)c(N)c(N),c(N)c(N)c(N)c(N)c(N)c(N)"></div>
+          <div class="tile-template" data-ncolumns="6" data-str="c(R)c(R)c(R)c(N)c(N)c(N),c(R)c!c(R)c(N)c(N)c(N),c(R)c(R)c(R)c(N)c(N)c(N),c(N)c(N)c(N)c(N)c(N)c(N)"></div>
           <br>
-          Let's assume that the tile we are clicking (Green X) is always safe, and there are M total mines. That tile would be from 0 up to 8. #R regions and #N tiles are counted.
+          Let's assume that the tile we are clicking (Red Square) is always safe, and there are M total mines. That tile would be from 0 up to 8. #R regions and #N tiles are counted.
           Let's say m is the exact number of mines that we want to find for the R region, where \(m \in [0,8]\). The formula that counts the number would be the following:
           \[
             HG_{all}(N,R,M,m) = \binom{R}{m} \cdot \binom{N-R}{M-m}
           \]
           This can be read as multiplying by the combinations of \(m\) mines in the \(R\) region, and then multiply the combinations of leftover mines \(M-m\) with the rest of the board tiles \(N\).
-          But what happens if the tile we are clicking is just an unknown tile. It might be either a mine or a safe tile.
+          But what happens if the tile can be either a mine or a safe tile.
           <br>
           <br>
-          <div class="tile-template" data-ncolumns="6" data-str="c(R)c(R)c(R)c(N)c(N)c(N),c(R)cc(R)c(N)c(N)c(N),c(R)c(R)c(R)c(N)c(N)c(N),c(N)c(N)c(N)c(N)c(N)c(N)"></div>
+          <div class="tile-template" data-ncolumns="6" data-str="c(R)c(R)c(R)c(N)c(N)c(N),c(R)c!c(R)c(N)c(N)c(N),c(R)c(R)c(R)c(N)c(N)c(N),c(N)c(N)c(N)c(N)c(N)c(N)"></div>
           <br>
           We will have to remove the number of combinations that is a mine. Here is an example of \( m=2 \) mines in a region of \( R=9 \), where the middle (as a flag), needs to be subtracted.
           <br>
@@ -850,7 +850,7 @@
           \[
             \begin{array}{ll}
               [BG_a \ast BG_b][m] &= \sum_{(m_i,m'_j) \text{ s.t. } m_i \in BG_a, m'_j \in BG_b }{ [m_i + m'_j = m] \cdot BG_a[m_i] \cdot BG_b[m'_j]}, m \in [0, 8] \\
-              [BG_a \ast BG_b][9] &= \sum_{k \in [0, 8]}{BG_a[9] \cdot BG_b[k]} \\
+              [BG_a \ast BG_b][9] &= \sum_{k \in [0, 8]}{BG_a[9] \cdot BG_b[k]} \text{ or } \sum_{k \in [0, 8]}{BG_b[9] \cdot BG_a[k]}\\
             \end{array}
           \]
           \[
@@ -862,19 +862,19 @@
           \]
           The reason for the summation of \( BG_a[9] \cdot BG_b[k] \) with \( k \in [0, 8] \) on only one side is that \( BG_a[9] \) is the "catch-all" side where a specific tile is a mine. By multiplying each \( BG_a[9] \) with \( BG_b[k] \), we would count all multiple combinations of the "catch-all".
           <br>
-          It is undefined at \( BG_a[9] \ne 0 \wedge BG_b[9] \ne 0\) as it will not be used.
+          It is undefined at \( BG_a[9] \ne 0 \wedge BG_b[9] \ne 0\) as it will not be used when considering states 1 through 4. Index 9 is mutally exclusive to at most one table.
           <br>
           <br>
           For shifting, where \( x_m \) is unaffected by the shift:
           \[
             BG_x \gg k = \left\{ \underbrace{0,0,\ldots,0}_{k}, \underbrace{x_0, x_1, \ldots, x_{8-k-1}}_{8-k}, x_m \right\}
           \]
-          This shifting operation is similar to convolving by some \( \{ \underbrace{0, 0, \ldots, 1}_{k}, 0, \ldots, 0 \} \).
-          <br>e
+          This shifting operation is similar to convolving by a table \( \{ \underbrace{0, 0, \ldots, 1}_{k}, 0, \ldots, 0 \} \)
+          <br>
           <br>
           This is used to count for flags/mines that are guaranteed to be mines e.g. board that requires shifting by 2
           <br>
-          <div class="tile-template" data-ncolumns="3" data-str="c(R)c(R)c(R),fcf,c(R)c(R)c(R)"></div>
+          <div class="tile-template" data-ncolumns="3" data-str="c(R)c(R)c(R),fc!f,c(R)c(R)c(R)"></div>
         </div>
         <h3>Number Probabilities (Algorithm)</h3>
         <div>
@@ -893,14 +893,15 @@
             <li>Tile clicked is a flag tile.</li>
             <li>Tile clicked is an unknown adjacent tile.</li>
           </ol>
-          We will use \(HG_{exc}\) for state 1 and \(HG_{all}\) for 2, 3, and 4. We create a \(BG_u\) table representing the number of combinations of "Region \( R \) has \( k \) mines".
+          We will use \(HG_{exc}\) for state 1 and \(HG_{all}\) for 2, and 4. We create a \(BG_u\) table representing the number of combinations of "Region \( R \) has \( k \) mines".
           <ol>
             <li>\( HG_{exc}(U_{NA}, R_U, M_G - m, k) \)</li>
             <li>\( HG_{all}(U_{NA}, R_U, M_G - m, k) \)</li>
-            <li>\( HG_{all}(U_{NA}, R_U, M_G - m, k) \)</li>
+            <li>\( 0 \)</li>
             <li>\( HG_{all}(U_{NA}, R_U, M_G - m, k) \)</li>
           </ol>
-          \( R_U \) represents the number of non-adjacent tiles that are near the clicked tile. Flags, numbers, and unknown tiles of adjacent tiles to solutions are not counted.
+          \( R_U \) represents the number of non-adjacent tiles that are near the clicked tile. Flags, numbers, and unknown tiles of adjacent tiles to solutions are not counted. 
+          State 3 does not use these formulas and is 0 because the clicked tile is always a mine.
           <br>
           <br>
           We will now create tables that count the number of mine combinations for the non-adjacent tiles. These formulas represent every solution combination of \( m \) in \( S_{M_G} \).
@@ -935,7 +936,7 @@
           <br>
           The table frequencies depends on how many tiles of different subsystems are within the R region. It also depends whether the clicked tile is at state 4 or not.
           For example, consider this board with 3 subsystems where only 2 are touching.
-          <div class="tile-template" data-ncolumns="7" data-str="ccccccc,c1cc!c2c,ccccccc,ccccccc,ccccccc,c3ccccc,ccccccc,"></div>
+          <div class="tile-template" data-ncolumns="7" data-str="c(1)c(1)c(1)cc(2)c(2)c(2),c(1)1c(1)c!c(2)2c(2),c(1)c(1)c(1)cc(2)c(2)c(2),ccccccc,c(3)c(3)c(3)cccc,c(3)3c(3)cccc,c(3)c(3)c(3)cccc,"></div>
           Three tiles are shared for the 1 tile and three tiles are shared for the 2 tile.
           <br>
           <br>
