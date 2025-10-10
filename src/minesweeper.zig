@@ -771,52 +771,16 @@ pub const MinesweeperMatrix = struct {
                     return lhs < rhs;
                 }
             }.f);
-            var bui_free_max: big_number.BigUInt = try .init(allocator, 0);
-            defer bui_free_max.deinit(allocator);
-            var bui_free_counter: big_number.BigUInt = try .init(allocator, 0);
-            defer bui_free_counter.deinit(allocator);
-            try bui_free_max.pad(allocator, (total_free_count + 31) / 32);
-            try bui_free_counter.pad(allocator, (total_free_count + 31) / 32);
-            bui_free_max.set(total_free_count);
-            self.sb.number_bytes = @truncate((self.tm.idtol.items.len + 31) / 32);
             var total: usize = 0;
-            while (bui_free_counter.order(&bui_free_max) != .eq) : (try bui_free_counter.add_one(allocator)) {
-                if (UsingWasm) {
-                    const wasm_main = @import("wasm_main.zig"); //Inside UsingWasm to prevent zig build test from reading wasm_allocator (error)
-                    if (@atomicLoad(bool, &wasm_main.CalculateStatus, .acquire)) {
-                        @atomicStore(bool, &wasm_main.CalculateStatus, false, .release);
-                        wasm_main.SetTimeoutProgress(subsystem_id, bui_free_counter.to_float(f32) / bui_free_max.to_float(f32));
-                        if (@atomicLoad(bool, &wasm_main.CancelCalculation, .acquire)) {
-                            return error.CalculationCancelled;
-                        }
-                    }
-                }
-                var bui_solution: big_number.BigUInt = try .init(allocator, 0);
-                defer bui_solution.deinit(allocator);
-                try bui_solution.pad(allocator, self.sb.number_bytes);
-                for (free_map.items, 0..) |offset, i| //Set bit of free variables to 1 (mine) if bui_free_counter is 1.
-                    if (bui_free_counter.bit(i))
-                        bui_solution.set(offset);
-                if (try self.verify_solution(allocator, &bui_solution)) {
-                    try self.sb.append(allocator, bui_solution);
-                    for (0..self.tm.idtol.items.len) |id|
-                        mines_value_list.items[id] += @intFromBool(bui_solution.bit(id));
-                    if (UsingWasm) {
-                        const pop_count = bui_solution.pop_count();
-                        _ = try total_mf_map.insert_unique(allocator, .{ .m = pop_count });
-                        const mf_i = total_mf_map.search(.{ .m = pop_count }).?;
-                        total_mf_map.list.items[mf_i].f += 1;
-                        for (0..self.tm.idtol.items.len) |id| {
-                            if (bui_solution.bit(id)) {
-                                _ = try location_mf_map.items[id].insert_unique(allocator, .{ .m = pop_count });
-                                const l_mf_i = location_mf_map.items[id].search(.{ .m = pop_count }).?;
-                                location_mf_map.items[id].list.items[l_mf_i].f += 1;
-                            }
-                        }
-                    }
-                    total += 1;
-                }
-            }
+            self.sb.number_bytes = @truncate((self.tm.idtol.items.len + 31) / 32);
+            try self.generate_solutions(
+                allocator,
+                subsystem_id,
+                &total,
+                &mines_value_list,
+                &total_mf_map,
+                &location_mf_map,
+            );
             if (UsingWasm) {
                 var results_str: std.ArrayList(u8) = .empty;
                 defer results_str.deinit(allocator);
@@ -833,60 +797,246 @@ pub const MinesweeperMatrix = struct {
                 }
                 const wasm_main = @import("wasm_main.zig");
                 wasm_main.AppendResults(results_str.items.ptr, results_str.items.len);
-                //This code shows the mine frequencies for each subsystem
-                //for (location_mf_map.items, 0..) |lmf, id| {
-                //    std.log.debug("ID #{}: ", .{id});
-                //    for (lmf.list.items) |mf| {
-                //        std.log.debug("{{ .m={}, .f={} }}, ", .{ mf.m, mf.f });
-                //    }
-                //    std.log.debug("\n", .{});
-                //}
             }
             return try ProbabilityList.init(allocator, total, &total_mf_map, self.tm, &mines_value_list, &location_mf_map);
         }
         return try ProbabilityList.init(allocator, 0, &total_mf_map, self.tm, &mines_value_list, &location_mf_map);
     }
-    fn verify_solution(self: MinesweeperMatrix, allocator: std.mem.Allocator, bui_solution: *big_number.BigUInt) !bool {
-        for (0..self.lcs.items.len) |i| {
-            const rev_i = self.lcs.items.len - 1 - i;
-            var lc = try self.lcs.items[rev_i].clone(allocator);
-            defer lc.deinit(allocator);
-            var next = lc.head;
-            var pivot_term: *Term = undefined;
-            var num_mines_term: *Term = undefined;
-            if (next) |n| {
-                if (n.id == null) {
-                    if (n.v != 0) {
-                        //Invalid solution if all id values (LHS) is zero and RHS (null id) is non-zero.
-                        return false;
-                    } else continue;
-                }
-                pivot_term = n;
-                var next2 = next.?.next;
-                next = next.?.next;
-                while (next2) |n2| {
-                    if (n2.id == null) {
-                        num_mines_term = n2;
-                        break;
-                    }
-                    next2 = n2.next;
-                }
+    ///Returns a 2 bit map where 0b00 is 0, 0b01 is 1, and 0b10 is not set for every item in idtol.
+    const SolutionMap = struct {
+        const Type = enum(u2) {
+            zero,
+            one,
+            not_set,
+            ///Should not be set
+            invalid,
+        };
+        bui: big_number.BigUInt,
+        len: usize,
+        fn init(allocator: std.mem.Allocator, idtol_len: usize) !SolutionMap {
+            var self: SolutionMap = .{ .bui = try .init(allocator, 0), .len = idtol_len };
+            errdefer self.deinit(allocator);
+            try self.bui.pad(allocator, (idtol_len * 2 + 31) / 32);
+            for (self.bui.bytes.items) |*b|
+                b.* = 0b10101010101010101010101010101010;
+            return self;
+        }
+        fn get(self: SolutionMap, i: usize) Type {
+            std.debug.assert(i < self.len);
+            const shift: u5 = @truncate((i % 16) * 2);
+            const sub_mask = @as(u32, 0b11) << shift;
+            const byte_i = i / 16;
+            const result: u2 = @truncate((self.bui.bytes.items[byte_i] & sub_mask) >> shift);
+            return @enumFromInt(result);
+        }
+        fn set(self: SolutionMap, i: usize, t: Type) void {
+            std.debug.assert(i < self.len);
+            const shift: u5 = @truncate((i % 16) * 2);
+            const sub_mask = @as(u32, 0b11) << shift;
+            const byte_i = i / 16;
+            const new_bits = @as(u32, @intFromEnum(t)) << shift;
+            const old_res = self.bui.bytes.items[byte_i] & ~sub_mask;
+            self.bui.bytes.items[byte_i] = old_res | new_bits;
+        }
+        //Folds into a smaller bui (Can only be .zero or .one)
+        fn get_solution(self: SolutionMap, allocator: std.mem.Allocator) !big_number.BigUInt {
+            var bui: big_number.BigUInt = try .init(allocator, 0);
+            errdefer bui.deinit(allocator);
+            try bui.pad(allocator, (self.len + 31) / 32);
+            for (0..self.len) |i| {
+                const t = self.get(i);
+                std.debug.assert(t == .zero or t == .one);
+                const t_value: u32 = if (t == .one) 1 else 0;
+                const byte_i = i / 32;
+                const shift: u5 = @truncate(i % 32);
+                bui.bytes.items[byte_i] |= t_value << shift;
             }
-            while (next) |n| {
-                if (n.id == null) break;
-                const var_v: i32 = @intFromBool(bui_solution.bit(n.id.?));
-                num_mines_term.v -= n.v * var_v; //Substitute all free variables onto null id.
-                lc.remove(allocator, n.id);
+            return bui;
+        }
+        fn clone(self: SolutionMap, allocator: std.mem.Allocator) !SolutionMap {
+            return .{ .bui = try self.bui.clone(allocator), .len = self.len };
+        }
+        fn deinit(self: *SolutionMap, allocator: std.mem.Allocator) void {
+            self.bui.deinit(allocator);
+        }
+    };
+    const StateCounter = struct {
+        lc_i: usize,
+        incr: SolutionMap.Type,
+        t: ?*Term,
+        v_now: i32 = 0,
+        sm: SolutionMap,
+        fn deinit(self: *StateCounter, allocator: std.mem.Allocator) void {
+            self.sm.deinit(allocator);
+        }
+    };
+    fn generate_solutions(
+        self: *MinesweeperMatrix,
+        allocator: std.mem.Allocator,
+        subsystem_id: usize,
+        total: *usize,
+        mines_value_list: *ValuesList,
+        total_mf_map: *MineFrequencyMap,
+        location_mf_map: *std.ArrayList(MineFrequencyMap),
+    ) !void {
+        var order_ids: std.ArrayList(usize) = .empty;
+        defer order_ids.deinit(allocator);
+        var rev_ids: std.ArrayList(usize) = .empty;
+        defer rev_ids.deinit(allocator);
+        for (0..self.lcs.items.len) |i| { //Order of IDs depending on matrix equation. (Reverse, variable only recorded once first instance)
+            const rev_i = self.lcs.items.len - 1 - i;
+            const lcs = &self.lcs.items[rev_i];
+            var next = lcs.head;
+            next_number: while (next) |n| : (next = n.next) {
+                if (n.id) |nid| {
+                    for (order_ids.items) |id|
+                        if (id == nid) continue :next_number;
+                    try rev_ids.append(allocator, nid);
+                }
                 next = n.next;
             }
-            const pivot_v = next.?.v;
-            if (pivot_v != 0 and pivot_v != 1) {
-                //Invalid solution if pivot variable is not 0 (clear) or 1 (mine).
-                return false;
-            } else if (pivot_v == 1)
-                bui_solution.set(pivot_term.id.?);
+            std.mem.reverse(usize, rev_ids.items);
+            try order_ids.insertSlice(allocator, 0, rev_ids.items);
+            rev_ids.clearRetainingCapacity();
         }
-        return true;
+        var sc_arr: std.ArrayList(StateCounter) = .empty;
+        defer {
+            for (sc_arr.items) |*sc|
+                sc.deinit(allocator);
+            sc_arr.deinit(allocator);
+        }
+        var lc_i: usize = self.lcs.items.len - 1;
+        var v_now: i32 = 0;
+        var t: ?*Term = self.lcs.items[lc_i].head;
+        var incr: SolutionMap.Type = .zero;
+        var sm: SolutionMap = try .init(allocator, self.tm.idtol.items.len);
+        defer sm.deinit(allocator);
+        var bui_count: big_number.BigUInt = try .init(allocator, 0);
+        defer bui_count.deinit(allocator);
+        try bui_count.pad(allocator, (sm.len + 31) / 32);
+        var bui_max: big_number.BigUInt = try .init(allocator, 0);
+        defer bui_max.deinit(allocator);
+        try bui_max.pad(allocator, (sm.len + 31) / 32);
+        for (0..self.tm.idtol.items.len) |i|
+            bui_max.set(i);
+        var first_bc_log: ?f32 = null;
+        loop_counter: while (true) {
+            if (UsingWasm) {
+                const wasm_main = @import("wasm_main.zig"); //Inside UsingWasm to prevent zig build test from reading wasm_allocator (error)
+                if (@atomicLoad(bool, &wasm_main.CalculateStatus, .acquire)) {
+                    var new_bui_count: big_number.BigUInt = try .init(allocator, 0);
+                    errdefer new_bui_count.deinit(allocator);
+                    try new_bui_count.pad(allocator, (sm.len + 31) / 32);
+                    for (0..self.tm.idtol.items.len) |i| {
+                        const bct = sm.get(order_ids.items[i]);
+                        if (bct != .zero and bct != .one) {
+                            new_bui_count.deinit(allocator);
+                            break;
+                        }
+                        const bct_value: u32 = if (bct == .one) 1 else 0;
+                        const byte_i = i / 32;
+                        const shift: u5 = @truncate(i % 32);
+                        new_bui_count.bytes.items[byte_i] |= bct_value << shift;
+                    } else {
+                        bui_count.deinit(allocator);
+                        bui_count = new_bui_count;
+                    }
+                    const bc_log = std.math.log2(bui_count.to_float(f32));
+                    //Make progress bar grow linearly using logarithms since it seems to grow exponentially
+                    if (first_bc_log == null and std.math.isFinite(bc_log))
+                        first_bc_log = bc_log;
+                    const bm_log = std.math.log2(bui_max.to_float(f32));
+                    @atomicStore(bool, &wasm_main.CalculateStatus, false, .release);
+                    if (first_bc_log) |cll|
+                        wasm_main.SetTimeoutProgress(subsystem_id, (bc_log - cll) / (bm_log - cll));
+                    if (@atomicLoad(bool, &wasm_main.CancelCalculation, .acquire)) {
+                        return error.CalculationCancelled;
+                    }
+                    @import("wasm_print.zig").FlushPrint(false);
+                }
+            }
+            if (t == null) {
+                while (true) {
+                    var sc = sc_arr.pop() orelse break :loop_counter;
+                    switch (sc.incr) { //Increment counter by 1 for each old ID, otherwise discard.
+                        .zero => {
+                            incr = .one;
+                            sc.sm.set(sc.t.?.id.?, .one);
+                        },
+                        .one => {
+                            sc.sm.deinit(allocator);
+                            continue;
+                        },
+                        else => {},
+                    }
+                    v_now = sc.v_now;
+                    lc_i = sc.lc_i;
+                    t = sc.t;
+                    sm.deinit(allocator);
+                    sm = sc.sm;
+                    continue :loop_counter;
+                }
+            }
+            while (t) |n| {
+                if (n.id != null) {
+                    const id = n.id.?;
+                    const set_t = sm.get(id);
+                    switch (set_t) {
+                        .not_set => {
+                            sm.set(id, .zero);
+                            try sc_arr.append(allocator, .{
+                                .lc_i = lc_i,
+                                .incr = .zero,
+                                .v_now = v_now,
+                                .t = t,
+                                .sm = try sm.clone(allocator),
+                            });
+                        },
+                        .zero => {},
+                        .one => {
+                            v_now += n.v;
+                        },
+                        else => {},
+                    }
+                } else {
+                    if (n.v == v_now) {
+                        if (lc_i == 0) { //All lc equations must be valid (In reverse lc_i order) to add a solution.
+                            var bui_solution = try sm.get_solution(allocator);
+                            defer bui_solution.deinit(allocator);
+                            try self.sb.append(allocator, bui_solution);
+                            for (0..self.tm.idtol.items.len) |id|
+                                mines_value_list.items[id] += @intFromBool(bui_solution.bit(id));
+                            if (UsingWasm) {
+                                const pop_count = bui_solution.pop_count();
+                                _ = try total_mf_map.insert_unique(allocator, .{ .m = pop_count });
+                                const mf_i = total_mf_map.search(.{ .m = pop_count }).?;
+                                total_mf_map.list.items[mf_i].f += 1;
+                                for (0..self.tm.idtol.items.len) |id| {
+                                    if (bui_solution.bit(id)) {
+                                        _ = try location_mf_map.items[id].insert_unique(allocator, .{ .m = pop_count });
+                                        const l_mf_i = location_mf_map.items[id].search(.{ .m = pop_count }).?;
+                                        location_mf_map.items[id].list.items[l_mf_i].f += 1;
+                                    }
+                                }
+                            }
+                            total.* += 1;
+                            t = null;
+                            continue :loop_counter;
+                        }
+                    } else {
+                        t = null;
+                        continue :loop_counter;
+                    }
+                    lc_i -= 1;
+                    const lc = &self.lcs.items[lc_i];
+                    if (lc.head) |lch|
+                        t = lch;
+                    v_now = 0;
+                    continue :loop_counter;
+                }
+                t = n.next;
+            }
+        }
     }
     pub fn format(self: MinesweeperMatrix, writer: *std.io.Writer) std.io.Writer.Error!void {
         try writer.writeAll("MinesweeperMatrix{[");
