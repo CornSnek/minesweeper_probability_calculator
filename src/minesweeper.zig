@@ -924,8 +924,12 @@ pub const MinesweeperMatrix = struct {
             if (UsingWasm) {
                 const wasm_main = @import("wasm_main.zig"); //Inside UsingWasm to prevent zig build test from reading wasm_allocator (error)
                 if (@atomicLoad(bool, &wasm_main.CalculateStatus, .acquire)) {
+                    defer @atomicStore(bool, &wasm_main.CalculateStatus, false, .release);
                     var new_bui_count: big_number.BigUInt = try .init(allocator, 0);
                     errdefer new_bui_count.deinit(allocator);
+                    if (@atomicLoad(bool, &wasm_main.CancelCalculation, .acquire)) {
+                        return error.CalculationCancelled;
+                    }
                     try new_bui_count.pad(allocator, (sm.len + 31) / 32);
                     for (0..self.tm.idtol.items.len) |i| {
                         const bct = sm.get(order_ids.items[i]);
@@ -946,13 +950,8 @@ pub const MinesweeperMatrix = struct {
                     if (first_bc_log == null and std.math.isFinite(bc_log))
                         first_bc_log = bc_log;
                     const bm_log = std.math.log2(bui_max.to_float(f32));
-                    @atomicStore(bool, &wasm_main.CalculateStatus, false, .release);
                     if (first_bc_log) |cll|
                         wasm_main.SetTimeoutProgress(subsystem_id, (bc_log - cll) / (bm_log - cll));
-                    if (@atomicLoad(bool, &wasm_main.CancelCalculation, .acquire)) {
-                        return error.CalculationCancelled;
-                    }
-                    @import("wasm_print.zig").FlushPrint(false);
                 }
             }
             if (t == null) {
@@ -980,8 +979,7 @@ pub const MinesweeperMatrix = struct {
             while (t) |n| {
                 if (n.id != null) {
                     const id = n.id.?;
-                    const set_t = sm.get(id);
-                    switch (set_t) {
+                    switch (sm.get(id)) {
                         .not_set => {
                             sm.set(id, .zero);
                             try sc_arr.append(allocator, .{
@@ -992,10 +990,7 @@ pub const MinesweeperMatrix = struct {
                                 .sm = try sm.clone(allocator),
                             });
                         },
-                        .zero => {},
-                        .one => {
-                            v_now += n.v;
-                        },
+                        .one => v_now += n.v,
                         else => {},
                     }
                 } else {
