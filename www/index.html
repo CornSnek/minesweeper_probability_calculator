@@ -115,7 +115,7 @@
       <button type="button" id="generate-grid">Generate</button>
       <br>
       <label for="tile-size-num">Tile Size</label>
-      <input id="tile-size-num" type="number" value="32" step="1" min="20" max="100" size="2">
+      <input id="tile-size-num" data-default="32" data-play="20" type="number" value="32" step="1" min="10" max="100" size="2">
       <label for="calculate-on-change">Calculate On Change</label>
       <input type="checkbox" id="calculate-on-change">
       <br>
@@ -124,6 +124,7 @@
         <option value="Local">Local</option>
         <option value="LocalP">Local - Percentage</option>
         <option value="Global">Global</option>
+        <option value="None">None</option>
       </select>
       <br>
       <label for="gm-count">Mine Count</label>

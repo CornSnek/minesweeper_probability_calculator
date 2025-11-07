@@ -457,6 +457,8 @@ async function init() {
     play_copy_board.onclick = e => play_obj.copy_board_str(e);
     play_current_board.onclick = show_play_current_board_f;
     close_play_body.onclick = e => {
+        tile_size_num.dataset.play = tile_size_num.value;
+        tile_size_num.value = parseInt(tile_size_num.dataset.default);
         play_body.style.display = 'none';
         web_state = STATE_IDLE;
         WasmExports.CancelProbability();
@@ -568,7 +570,17 @@ async function init() {
     flash_body.onclick = hide_flash;
     select_probability.onchange = e => {
         const prob_type = e.target.value;
-        flash_message(FLASH_SUCCESS, (prob_type !== 'Global') ? 'Local shows only the probability for adjacent tiles' : 'Global shows the probability of the whole board, where Mine Count is considered', 5000);
+        switch (prob_type) {
+            case 'Global':
+                flash_message(FLASH_SUCCESS, 'Global shows the probability of the whole board, where Mine Count is considered', 5000);
+                break;
+            case 'None':
+                flash_message(FLASH_SUCCESS, 'None does not output any probability calculations, but mine configurations can be checked.', 5000);
+                break;
+            default:
+                flash_message(FLASH_SUCCESS, 'Local shows only the probability for adjacent tiles', 5000);
+                break;
+        }
         if (calculate_on_change.checked) calculate_probability_f(e);
     };
     include_flags.onchange = e => flash_message(FLASH_SUCCESS, e.target.checked ? 'Flags and mines are counted in Mine Count to consider the total number of mines left + flags + mines in a board.' : 'Flags and mines are not counted in Mine Count to consider only the number of mines left.', 5000);
@@ -592,6 +604,8 @@ async function init() {
 }
 function show_play_current_board_f(e) {
     if (web_state == STATE_IDLE) {
+        tile_size_num.dataset.default = tile_size_num.value;
+        tile_size_num.value = parseInt(tile_size_num.dataset.play);
         deselect_tiles_f();
         hide_any_right_panels(e);
         play_body.style.display = 'initial';
@@ -656,10 +670,11 @@ function hide_flash() {
     flash_body.style.display = 'none';
 }
 function tile_size_f(e) {
-    const tile_size = Math.min(Math.max(parseInt(tile_size_num.value), 20), 100);
+    const tile_size = Math.min(Math.max(parseInt(tile_size_num.value), tile_size_num.min), tile_size_num.max);
     tile_size_num.value = tile_size;
-    document.body.style.setProperty('--size-tile', `${tile_size}px`);
-    document.body.style.setProperty('--size-image', `${tile_size * 3 / 4}px`);
+    const elem = (web_state != STATE_PLAY) ? document.body : play_board;
+    elem.style.setProperty('--size-tile', `${tile_size}px`);
+    elem.style.setProperty('--size-image', `${tile_size * 3 / 4}px`);
 }
 const worker_handler_module = {
     JSPrint,
@@ -1661,7 +1676,7 @@ function parse_probability_list(c_arr_ptr) {
                         }
                     }
                     mfg_list.add_local(ca_i, mfg);
-                    if (select_probability.value !== 'Global') {
+                    if (select_probability.value !== 'Global' && select_probability.value !== 'None') {
                         div.textContent = select_probability.value === 'Local'
                             ? `\\( \\frac{${count}}{${total_solutions}} \\)`
                             : `\\( \\htmlStyle{font-size: 0.75em}{${format_percentage(count, total_solutions)}\\\%} \\)`;
